@@ -11,17 +11,19 @@ A mobile OS on the Linux kernel (AArch64) with a Rust userspace. The kernel come
 
 ## Status
 
-The project is a skeleton. Working today: init as PID 1 with pseudo-filesystem mounting and a service supervisor, input devices read straight from `/dev/input` over epoll, battery and backlight through sysfs, a session daemon attached to VTs with an IPC server, and the `afflictioctl` client. The graphics stack and per-device images are not built yet; the plan lives in docs/roadmap.en.md.
+The skeleton already boots end to end in QEMU: liinit mounts the filesystems and starts services, tiosessd brings up an autologin session on a virtual terminal, tioctl talks to the daemon over a unix socket, a killed daemon comes back through the supervisor, and SIGTERM to PID 1 takes the machine through a clean poweroff. The scenario runs both locally and in CI (the `qemu` job). Roadmap stage 1 is done and tagged v0.1.0. The graphics stack and per-device images are still ahead; the plan lives in docs/roadmap.en.md.
 
 ## Components
 
 | Component | Purpose |
 | --- | --- |
-| `afflictio-init` | PID 1: mounts, service supervisor, clean shutdown |
-| `afflictio-sessiond` | Session manager: autologin, VT switching, IPC over a unix socket |
-| `afflictioctl` | CLI: status, devices, session start, poweroff and reboot |
-| `afflictio-hal` | Library: evdev, power_supply, backlight |
-| `afflictio-ipc` | Shared protocol: JSON messages for sessiond and the CLI |
+| `liinit` | PID 1: mounts, service supervisor, clean shutdown |
+| `tiosessd` | Session manager: autologin, VT switching, IPC over a unix socket |
+| `tioctl` | CLI: status, devices, session start, poweroff and reboot |
+| `tiohal` | Library: evdev, power_supply, backlight |
+| `lioipc` | Shared protocol: JSON messages for tiosessd and tioctl |
+
+The names are fused from pieces of the word Afflictio: `li` + init, `tio` + hal and so on. Configs live in `/etc/afflictio/`, the socket at `/run/afflictio/tiosess.sock`, and the kernel parameter is `afflictio.init=`.
 
 ## Building
 
@@ -31,33 +33,43 @@ Any current Rust toolchain works; the crates keep a minimal dependency set (`lib
 cargo build --release
 ```
 
-The binaries land in `target/release/afflictio-init`, `target/release/afflictio-sessiond`, `target/release/afflictioctl`.
+The binaries land in `target/release/liinit`, `target/release/tiosessd`, `target/release/tioctl`.
 
-To check against the target architecture:
+For the target architecture the crates build against the musl target with static linking through `rust-lld`, no cross-gcc needed:
 
 ```sh
-rustup target add aarch64-unknown-linux-gnu
-cargo check --workspace --target aarch64-unknown-linux-gnu
+rustup target add aarch64-unknown-linux-musl
+cargo build --release --target aarch64-unknown-linux-musl
 ```
 
-Kernel building is described in [kernel/README.md](kernel/README.md): the script downloads a Linux archive from kernel.org, applies the `kernel/configs/afflictio.fragment` fragment and builds `Image` with the `aarch64-linux-gnu-` toolchain.
+## Running in QEMU
 
-## Running without a phone
+The smoke test walks the whole path: it builds the aarch64 binaries, packs an initramfs from an Alpine minirootfs, downloads the `linux-virt` kernel from the Alpine netboot repository, unwraps the EFI zboot payload and boots everything in `qemu-system-aarch64 -machine virt`. Inside, liinit starts tiosessd with autologin, a probe script talks to the IPC, kills tiosessd and waits for the supervisor to respawn it, then sends SIGTERM to PID 1. The machine powers down, QEMU exits with code 0, and the serial log keeps the `SMOKE_IPC_OK`, `SMOKE_SESSIONS_OK`, `SMOKE_RESPAWN_OK` markers.
+
+```sh
+./scripts/qemu-smoke.sh
+```
+
+Requirements: `qemu-system-aarch64`, `cpio`, `curl`, `cargo`. Environment variables: `KERNEL_URL`, `MINIROOTFS_URL` (Alpine 3.22 by default), `QEMU_TIMEOUT`, `QEMU_DATA_DIR` (a QEMU firmware directory, when ROM files live somewhere unusual). Artifacts stay in `out/`: the kernel, the initramfs, the serial log.
+
+Building the kernel from source with the config fragment is described in [kernel/README.md](kernel/README.md).
+
+## Running without QEMU
 
 The skeleton runs on any machine. In a terminal:
 
 ```sh
-cargo run -p afflictio-init
+cargo run -p liinit
 ```
 
-The init notices it is not PID 1, skips mounting and works as a plain supervisor driven by its TOML config. The session daemon starts the same way; the socket path is overridden with `AFFLICTIO_SOCKET`:
+The liinit notices it is not PID 1, skips mounting and works as a plain supervisor driven by its TOML config. The session daemon starts the same way; the socket path is overridden with `AFFLICTIO_SOCKET`:
 
 ```sh
-cargo run -p afflictio-session
-AFFLICTIO_SOCKET=/tmp/sessiond.sock ./target/release/afflictioctl status
+cargo run -p tiosess
+AFFLICTIO_SOCKET=/tmp/tiosess.sock ./target/release/tioctl status
 ```
 
-Example configs with autologin and a service list will arrive with the initramfs image (stage 1 of the roadmap).
+Example configs with autologin and a service list live in kernel/initramfs/.
 
 ## Documentation
 

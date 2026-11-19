@@ -2,15 +2,15 @@
 
 ## Where the project is
 
-The skeleton: init as PID 1 with a service supervisor, a HAL that reads evdev over epoll, a session daemon with an IPC server, the `afflictioctl` client, the kernel config fragment and the build script. Everything compiles for x86_64 and passes `cargo check` for AArch64. There is still a long way to an installable phone distribution, and it is more honest to name the steps that separate the skeleton from a working system.
+Stage 1 is done: the skeleton boots in QEMU on ARM64 with one script, `scripts/qemu-smoke.sh`, and the same scenario runs in CI. Inside the machine liinit mounts the filesystems and starts services, tiosessd brings up an autologin session on a VT, tioctl talks over the IPC, the supervisor restarts a killed daemon, and SIGTERM ends in a clean poweroff. The skeleton is tagged v0.1.0. There is still a long way to an installable phone distribution, and it is more honest to name the steps that separate the skeleton from a working system.
 
-## Stage 1. Skeleton check in QEMU
+## Stage 1. Skeleton check in QEMU (done)
 
-Goal: boot a kernel with initramfs in QEMU (`qemu-system-aarch64 -M virt`) and confirm that init mounts the filesystems, starts services and reacts to signals. This includes an initramfs image with the compiled crates and running sessiond with autologin on a virtual terminal. The stage ends with a tag, after which the QEMU run joins CI.
+Booting a kernel with initramfs in `qemu-system-aarch64 -machine virt` and confirming that init mounts the filesystems, starts services, reacts to signals and shuts the machine down. The test uses the `linux-virt` kernel from the Alpine netboot repository: it is built for emulation and carries everything the virt machine needs. The kernel-from-source build script with the config fragment stays in scripts/build-kernel.sh for real devices. The check joined CI as the `qemu` job.
 
 ## Stage 2. Graphics and sessions
 
-A terminal-only scenario: text output through `simpledrm` or the framebuffer in the style of `kmscon`, keyboard attached through the HAL, VT switching. A session gets its TTY and controlling terminal, already described in the architecture. Exit criterion: on a device or in QEMU two sessions switch by keyboard.
+A terminal-only scenario: text output through `simpledrm` or the framebuffer, keyboard attached through the HAL, VT switching driven by the keyboard. A session gets its TTY and controlling terminal, already described in the architecture; the stage 1 QEMU run showed that VT infrastructure works on the virt kernel. Exit criterion: two sessions switch by keyboard with no commands typed.
 
 ## Stage 3. Devices through postmarketOS
 
@@ -22,7 +22,7 @@ On devices with a mainline driver (freedreno, panfrost, panthor) the graphics st
 
 ## Stage 5. Distribution build
 
-Rootfs build scripts (a minimal busybox and coreutils set, Afflictio userspace packages), images for the first target, flashing documentation through fastboot. The stage ends with an image that flashes onto a supported device and boots to a terminal with autologin.
+Rootfs build scripts (a minimal busybox and coreutils set, Afflictio userspace packages), images for the first target, flashing documentation through fastboot. The stage 1 initramfs work already produced reusable pieces: musl binary builds, cpio packing, boot composition. The stage ends with an image that flashes onto a supported device and boots to a terminal with autologin.
 
 ## Open questions
 

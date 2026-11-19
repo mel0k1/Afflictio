@@ -11,17 +11,19 @@
 
 ## Состояние
 
-Проект на стадии каркаса. Работают: init как PID 1 с монтированием псевдо-ФС и супервизором служб, чтение устройств ввода напрямую из `/dev/input` через epoll, батарея и подсветка через sysfs, демон сессий с привязкой к VT и IPC-сервером, клиент `afflictioctl`. Графический стек и образы для конкретных устройств не собраны, план работ лежит в docs/roadmap.ru.md.
+Каркас уже загружается в QEMU целиком: liinit монтирует ФС и запускает службы, tiosessd поднимает autologin-сессию на виртуальном терминале, tioctl общается с демоном по unix-сокету, убитый демон перезапускается супервизором, SIGTERM в PID 1 приводит машину к корректному poweroff. Этот сценарий выполняется и локально, и в CI (job `qemu`). Этап 1 дорожной карты закрыт тегом v0.1.0. Графический стек и образы для конкретных устройств впереди, план работ в docs/roadmap.ru.md.
 
 ## Компоненты
 
 | Компонент | Назначение |
 | --- | --- |
-| `afflictio-init` | PID 1: монтирование, супервизор служб, корректное выключение |
-| `afflictio-sessiond` | Менеджер сессий: autologin, VT-переключение, IPC на unix-сокете |
-| `afflictioctl` | CLI: статус, устройства, запуск сессий, poweroff и reboot |
-| `afflictio-hal` | Библиотека: evdev, power_supply, backlight |
-| `afflictio-ipc` | Общий протокол: JSON-сообщения для sessiond и CLI |
+| `liinit` | PID 1: монтирование, супервизор служб, корректное выключение |
+| `tiosessd` | Менеджер сессий: autologin, VT-переключение, IPC на unix-сокете |
+| `tioctl` | CLI: статус, устройства, запуск сессий, poweroff и reboot |
+| `tiohal` | Библиотека: evdev, power_supply, backlight |
+| `lioipc` | Общий протокол: JSON-сообщения для tiosessd и tioctl |
+
+Имена собраны из кусочков слова Afflictio: `li` + init, `tio` + hal и так далее. Конфиги живут в `/etc/afflictio/`, сокет в `/run/afflictio/tiosess.sock`, параметр ядра называется `afflictio.init=`.
 
 ## Сборка
 
@@ -31,33 +33,43 @@
 cargo build --release
 ```
 
-Бинарные артефакты: `target/release/afflictio-init`, `target/release/afflictio-sessiond`, `target/release/afflictioctl`.
+Бинарные артефакты: `target/release/liinit`, `target/release/tiosessd`, `target/release/tioctl`.
 
-Для проверки под целевой архитектурой:
-
-```sh
-rustup target add aarch64-unknown-linux-gnu
-cargo check --workspace --target aarch64-unknown-linux-gnu
-```
-
-Сборка ядра описана в [kernel/README.md](kernel/README.md): скрипт скачивает архив Linux с kernel.org, применяет фрагмент `kernel/configs/afflictio.fragment` и собирает `Image` с кросс-тулчейном `aarch64-linux-gnu-`.
-
-## Запуск без телефона
-
-Каркас не требует настоящей машины. В терминале:
+Под целевую архитектуру крейты собираются musl-таргетом со статической линковкой через `rust-lld`, кросс-gcc не требуется:
 
 ```sh
-cargo run -p afflictio-init
+rustup target add aarch64-unknown-linux-musl
+cargo build --release --target aarch64-unknown-linux-musl
 ```
 
-Init заметит, что он не PID 1, пропустит монтирование и будет работать как обычный супервизор служб из своего TOML-конфига. Демон сессий запускается так же, путь сокета переопределяется переменной `AFFLICTIO_SOCKET`:
+## Запуск в QEMU
+
+Smoke-тест делает весь путь: собирает aarch64-бинари, упаковывает initramfs из Alpine minirootfs, скачивает ядро `linux-virt` из netboot-репозитория Alpine, вынимает payload из EFI zboot-обёртки и грузит всё в `qemu-system-aarch64 -machine virt`. Внутри liinit запускает tiosessd с autologin, проверяющий скрипт ходит в IPC, убивает tiosessd и дожидается его перезапуска супервизором, затем отправляет SIGTERM в PID 1. Машина уходит в poweroff, QEMU завершается с кодом 0, в serial-логе остаются маркеры `SMOKE_IPC_OK`, `SMOKE_SESSIONS_OK`, `SMOKE_RESPAWN_OK`.
 
 ```sh
-cargo run -p afflictio-session
-AFFLICTIO_SOCKET=/tmp/sessiond.sock ./target/release/afflictioctl status
+./scripts/qemu-smoke.sh
 ```
 
-Пример конфигов с autologin и списком служб появится вместе с initramfs-образом (этап 1 дорожной карты).
+Требования к окружению: `qemu-system-aarch64`, `cpio`, `curl`, `cargo`. Аргументы окружения: `KERNEL_URL`, `MINIROOTFS_URL` (по умолчанию Alpine 3.22), `QEMU_TIMEOUT`, `QEMU_DATA_DIR` (каталог прошивок QEMU, если ROM-файлы лежат нестандартно). Артефакты остаются в `out/`: ядро, initramfs, serial-лог.
+
+Сборка ядра из исходников с нашим фрагментом конфигурации описана в [kernel/README.md](kernel/README.md).
+
+## Запуск без QEMU
+
+Каркас работает и без эмуляции. В терминале:
+
+```sh
+cargo run -p liinit
+```
+
+liinit заметит, что он не PID 1, пропустит монтирование и будет работать как обычный супервизор служб из своего TOML-конфига. Демон сессий запускается так же, путь сокета переопределяется переменной `AFFLICTIO_SOCKET`:
+
+```sh
+cargo run -p tiosess
+AFFLICTIO_SOCKET=/tmp/tiosess.sock ./target/release/tioctl status
+```
+
+Пример конфигов с autologin и списком служб лежит в kernel/initramfs/.
 
 ## Документация
 
