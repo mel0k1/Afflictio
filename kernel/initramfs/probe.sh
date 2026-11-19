@@ -65,6 +65,33 @@ else
   exit 1
 fi
 
+if [ -e /dev/binderfs/binder-control ]; then
+  echo SMOKE_BINDERFS_OK
+else
+  echo SMOKE_BINDERFS_ABSENT
+fi
+
+n=0
+kms_ok=0
+while [ $n -lt 60 ]; do
+  if [ -f /run/afflictio/tocomp.json ]; then
+    flips=$(grep -o '"flips":[0-9]*' /run/afflictio/tocomp.json | sed 's/"flips"://')
+    if [ -n "${flips}" ] && [ "${flips}" -gt 20 ]; then
+      kms_ok=1
+      echo "SMOKE_KMS_FLIPS_OK ${flips}"
+      break
+    fi
+  fi
+  sleep 1
+  n=$((n+1))
+done
+if [ "${kms_ok}" != "1" ]; then
+  echo SMOKE_FAIL_KMS
+  cat /run/afflictio/tocomp.json 2>/dev/null
+  kill -TERM 1
+  exit 1
+fi
+
 sleep 3
 killall tiosessd 2>/dev/null
 n=0

@@ -1,7 +1,17 @@
+[[mounts]]
+source = "binder"
+target = "/dev/binderfs"
+fstype = "binder"
+
 [[services]]
 name = "tiosessd"
 argv = ["/bin/tiosessd"]
 respawn = true
+
+[[services]]
+name = "tiocompd"
+argv = ["/bin/tiocompd"]
+respawn = false
 
 [[services]]
 name = "probe"

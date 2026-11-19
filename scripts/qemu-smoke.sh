@@ -76,6 +76,7 @@ wait_log "SMOKE_READY" 180 || status_fail "smoke failed: sessions or keyboard no
 try_switch "SMOKE_SWITCH_VT1_OK" f1 || status_fail "smoke failed: keyboard switch to vt1"
 try_switch "SMOKE_SWITCH_VT2_OK" f2 || status_fail "smoke failed: keyboard switch to vt2"
 wait_log "SMOKE_FRAMES_DIFFER" 10 || status_fail "smoke failed: vt frames identical"
+wait_log "SMOKE_KMS_FLIPS_OK" 60 || status_fail "smoke failed: kms compositor flips"
 wait_log "SMOKE_RESPAWN_OK" 120 || status_fail "smoke failed: respawn did not recover sessiond"
 
 n=0
@@ -103,6 +104,10 @@ if ! grep -q "SMOKE_SWITCH_VT2_OK" "${LOG}"; then
 fi
 if ! grep -q "SMOKE_FRAMES_DIFFER" "${LOG}"; then
   echo "smoke failed: vt frames identical"
+  exit 1
+fi
+if ! grep -q "SMOKE_KMS_FLIPS_OK" "${LOG}"; then
+  echo "smoke failed: kms compositor flips missing"
   exit 1
 fi
 if ! grep -q "SMOKE_RESPAWN_OK" "${LOG}"; then

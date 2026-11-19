@@ -18,7 +18,16 @@ pub struct ServiceSpec {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct MountSpec {
+    pub source: String,
+    pub target: String,
+    pub fstype: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct InitConfig {
+    #[serde(default)]
+    pub mounts: Vec<MountSpec>,
     #[serde(default)]
     pub services: Vec<ServiceSpec>,
 }
@@ -137,6 +146,22 @@ pub fn bootstrap_mounts() {
     }
 }
 
+pub fn apply_mounts(mounts: &[MountSpec]) {
+    for spec in mounts {
+        if let Err(e) = fs::create_dir_all(&spec.target) {
+            eprintln!("liinit: mkdir {}: {e}", spec.target);
+            continue;
+        }
+        match mount_one(&spec.source, &spec.target, &spec.fstype) {
+            Ok(()) => eprintln!("liinit: mounted {} on {}", spec.fstype, spec.target),
+            Err(e) => eprintln!(
+                "liinit: mount {} on {} skipped: {e}",
+                spec.fstype, spec.target
+            ),
+        }
+    }
+}
+
 pub fn run(config_path: &str) -> io::Result<()> {
     if unsafe { libc::getpid() } == 1 {
         bootstrap_mounts();
@@ -144,12 +169,14 @@ pub fn run(config_path: &str) -> io::Result<()> {
     let raw = fs::read_to_string(config_path).unwrap_or_default();
     let config = if raw.trim().is_empty() {
         InitConfig {
+            mounts: Vec::new(),
             services: Vec::new(),
         }
     } else {
         InitConfig::parse(&raw)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?
     };
+    apply_mounts(&config.mounts);
     let mut supervisor = Supervisor::new(config);
     supervisor.start()?;
     let mut signals = Signals::new([SIGCHLD, SIGTERM, SIGINT]).map_err(io::Error::other)?;
@@ -181,6 +208,11 @@ mod tests {
     #[test]
     fn parses_config() {
         let raw = r#"
+[[mounts]]
+source = "binder"
+target = "/dev/binderfs"
+fstype = "binder"
+
 [[services]]
 name = "sessiond"
 argv = ["/usr/bin/tiosessd"]
@@ -192,15 +224,19 @@ argv = ["/bin/true"]
 "#;
         let config = InitConfig::parse(raw).unwrap();
         assert_eq!(config.services.len(), 2);
+        assert_eq!(config.mounts.len(), 1);
         assert!(config.services[0].respawn);
         assert!(!config.services[1].respawn);
         assert_eq!(config.services[0].argv[0], "/usr/bin/tiosessd");
+        assert_eq!(config.mounts[0].fstype, "binder");
+        assert_eq!(config.mounts[0].target, "/dev/binderfs");
     }
 
     #[test]
     fn empty_config_is_valid() {
         let config = InitConfig::parse("").unwrap();
         assert!(config.services.is_empty());
+        assert!(config.mounts.is_empty());
     }
 
     #[test]
@@ -217,6 +253,7 @@ argv = ["/bin/true"]
     #[test]
     fn starts_and_counts_children() {
         let config = InitConfig {
+            mounts: Vec::new(),
             services: vec![ServiceSpec {
                 name: String::from("sleeper"),
                 argv: vec![String::from("sleep"), String::from("30")],
@@ -233,6 +270,7 @@ argv = ["/bin/true"]
     #[test]
     fn rejects_empty_argv() {
         let config = InitConfig {
+            mounts: Vec::new(),
             services: vec![ServiceSpec {
                 name: String::from("broken"),
                 argv: Vec::new(),
