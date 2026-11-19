@@ -11,7 +11,7 @@ A mobile OS on the Linux kernel (AArch64) with a Rust userspace. The kernel come
 
 ## Status
 
-Roadmap stages 1-3 are done (tags v0.1.0, v0.2.0, v0.3.0). The skeleton boots in QEMU end to end: liinit mounts the filesystems and starts services, tiosessd brings up two autologin sessions on VT1 and VT2, session text shows up on the framebuffer through virtio-gpu, the Ctrl+Alt+Fn combo switches consoles through the HAL-based keyboard listener, a killed daemon comes back through the supervisor, and SIGTERM ends in a clean poweroff. The whole scenario runs in CI in the `qemu` job. The first device target is chosen (PinePhone) and the pmOS artifact pipeline builds in CI in the `device` job: the kernel, DTBs, modules, U-Boot, the kernel config check and rootfs.ext4. The graphics stack and flashing to hardware are still ahead; the plan lives in docs/roadmap.en.md.
+Roadmap stages 1-4 are done (tags v0.1.0, v0.2.0, v0.3.0, v0.4.0). The skeleton boots in QEMU end to end: liinit mounts the filesystems and starts services, tiosessd brings up two autologin sessions on VT1 and VT2, session text shows up on the framebuffer through virtio-gpu, the Ctrl+Alt+Fn combo switches consoles through the HAL-based keyboard listener, a killed daemon comes back through the supervisor, and SIGTERM ends in a clean poweroff. On top of that, tiocompd draws a compositor frame directly through KMS/DRM (page flips on dumb buffers), and liobinder covers the Binder transport layer. The whole scenario runs in CI in the `qemu` job with the `SMOKE_KMS_FLIPS_OK` and `SMOKE_BINDERFS_ABSENT` markers. The first device target is chosen (PinePhone) and the pmOS artifact pipeline builds in CI in the `device` job: the kernel, DTBs, modules, U-Boot, the kernel config check and rootfs.ext4. Flashing to hardware is still ahead; the plan lives in docs/roadmap.en.md.
 
 ## Components
 
@@ -22,6 +22,8 @@ Roadmap stages 1-3 are done (tags v0.1.0, v0.2.0, v0.3.0). The skeleton boots in
 | `tioctl` | CLI: status, devices, session start, poweroff and reboot |
 | `tiohal` | Library: evdev with Ctrl+Alt+Fn parsing, power_supply, backlight |
 | `lioipc` | Shared protocol: JSON messages for tiosessd and tioctl |
+| `tiocomp` | The `tiocompd` daemon: compositor on top of KMS/DRM, dumb buffers, page flips |
+| `liobinder` | Binder transport: parcels, `BINDER_WRITE_READ`, servicemanager client |
 
 The names are fused from pieces of the word Afflictio: `li` + init, `tio` + hal and so on. Configs live in `/etc/afflictio/`, the socket at `/run/afflictio/tiosess.sock`, and the kernel parameter is `afflictio.init=`.
 
