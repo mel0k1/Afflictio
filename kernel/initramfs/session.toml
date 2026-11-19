@@ -1,3 +1,7 @@
-[autologin]
+[[autologin]]
 user = "mel0k1"
-command = ["/bin/sh"]
+command = ["/bin/sh", "-c", "echo 1111111111; echo 1111111111; echo 1111111111; echo 1111111111; echo 1111111111; echo 1111111111; echo 1111111111; echo 1111111111; exec /bin/sh"]
+
+[[autologin]]
+user = "mel0k1"
+command = ["/bin/sh", "-c", "echo 2222222222; echo 2222222222; echo 2222222222; echo 2222222222; echo 2222222222; echo 2222222222; echo 2222222222; echo 2222222222; exec /bin/sh"]

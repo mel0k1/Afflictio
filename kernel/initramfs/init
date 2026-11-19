@@ -3,4 +3,7 @@
 /bin/busybox mount -t proc proc /proc
 /bin/busybox mount -t sysfs sysfs /sys
 /bin/busybox mount -t devtmpfs dev /dev
+/bin/busybox modprobe virtio-gpu
+/bin/busybox modprobe evdev
+/bin/busybox modprobe virtio-input
 exec /bin/liinit
