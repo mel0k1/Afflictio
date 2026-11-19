@@ -1,0 +1,9 @@
+[[services]]
+name = "tiosessd"
+argv = ["/bin/tiosessd"]
+respawn = true
+
+[[services]]
+name = "probe"
+argv = ["/bin/probe.sh"]
+respawn = false

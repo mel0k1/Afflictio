@@ -1,0 +1,3 @@
+[autologin]
+user = "mel0k1"
+command = ["/bin/sh"]
