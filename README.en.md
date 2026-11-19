@@ -11,16 +11,16 @@ A mobile OS on the Linux kernel (AArch64) with a Rust userspace. The kernel come
 
 ## Status
 
-The skeleton already boots end to end in QEMU: liinit mounts the filesystems and starts services, tiosessd brings up an autologin session on a virtual terminal, tioctl talks to the daemon over a unix socket, a killed daemon comes back through the supervisor, and SIGTERM to PID 1 takes the machine through a clean poweroff. The scenario runs both locally and in CI (the `qemu` job). Roadmap stage 1 is done and tagged v0.1.0. The graphics stack and per-device images are still ahead; the plan lives in docs/roadmap.en.md.
+Roadmap stages 1 and 2 are done (tags v0.1.0 and v0.2.0). The skeleton boots in QEMU end to end: liinit mounts the filesystems and starts services, tiosessd brings up two autologin sessions on VT1 and VT2, session text shows up on the framebuffer through virtio-gpu, the Ctrl+Alt+Fn combo switches consoles through the HAL-based keyboard listener, a killed daemon comes back through the supervisor, and SIGTERM ends in a clean poweroff. The whole scenario runs in CI in the `qemu` job. The graphics stack and per-device images are still ahead; the plan lives in docs/roadmap.en.md.
 
 ## Components
 
 | Component | Purpose |
 | --- | --- |
 | `liinit` | PID 1: mounts, service supervisor, clean shutdown |
-| `tiosessd` | Session manager: autologin, VT switching, IPC over a unix socket |
+| `tiosessd` | Session manager: autologin on several VTs, Ctrl+Alt+Fn switching, IPC |
 | `tioctl` | CLI: status, devices, session start, poweroff and reboot |
-| `tiohal` | Library: evdev, power_supply, backlight |
+| `tiohal` | Library: evdev with Ctrl+Alt+Fn parsing, power_supply, backlight |
 | `lioipc` | Shared protocol: JSON messages for tiosessd and tioctl |
 
 The names are fused from pieces of the word Afflictio: `li` + init, `tio` + hal and so on. Configs live in `/etc/afflictio/`, the socket at `/run/afflictio/tiosess.sock`, and the kernel parameter is `afflictio.init=`.
@@ -44,13 +44,13 @@ cargo build --release --target aarch64-unknown-linux-musl
 
 ## Running in QEMU
 
-The smoke test walks the whole path: it builds the aarch64 binaries, packs an initramfs from an Alpine minirootfs, downloads the `linux-virt` kernel from the Alpine netboot repository, unwraps the EFI zboot payload and boots everything in `qemu-system-aarch64 -machine virt`. Inside, liinit starts tiosessd with autologin, a probe script talks to the IPC, kills tiosessd and waits for the supervisor to respawn it, then sends SIGTERM to PID 1. The machine powers down, QEMU exits with code 0, and the serial log keeps the `SMOKE_IPC_OK`, `SMOKE_SESSIONS_OK`, `SMOKE_RESPAWN_OK` markers.
+The smoke test walks the whole path. The `linux-virt` kernel comes from an Alpine apk package, and the same package supplies the `virtio-gpu`, `evdev` and `virtio-input` modules for the initramfs (fbcon and VT are built into the kernel). Binaries build against musl, the initramfs packs an Alpine minirootfs. QEMU runs with `virtio-gpu-pci` and `virtio-keyboard-pci`, keystrokes arrive through the QMP monitor's send-key command. Inside the machine a probe script checks the status (two sessions, keyboard counter above zero), switches consoles with Ctrl+Alt+F1 and Ctrl+Alt+F2 and compares the content of `/dev/fb0` between switches: the frames must differ, which proves session text really reaches the screen. Then tiosessd is killed, the supervisor brings it back, SIGTERM takes the machine to poweroff, and QEMU exits with code 0.
 
 ```sh
 ./scripts/qemu-smoke.sh
 ```
 
-Requirements: `qemu-system-aarch64`, `cpio`, `curl`, `cargo`. Environment variables: `KERNEL_URL`, `MINIROOTFS_URL` (Alpine 3.22 by default), `QEMU_TIMEOUT`, `QEMU_DATA_DIR` (a QEMU firmware directory, when ROM files live somewhere unusual). Artifacts stay in `out/`: the kernel, the initramfs, the serial log.
+Requirements: `qemu-system-aarch64`, `cpio`, `curl`, `python3`, `cargo`. Environment variables: `KERNEL_APK_URL`, `MINIROOTFS_URL` (Alpine 3.22 by default), `QEMU_DATA_DIR` (a QEMU firmware directory, when ROM files live somewhere unusual). Artifacts stay in `out/`: the kernel, the modules, the initramfs, the serial log.
 
 Building the kernel from source with the config fragment is described in [kernel/README.md](kernel/README.md).
 
@@ -69,7 +69,7 @@ cargo run -p tiosess
 AFFLICTIO_SOCKET=/tmp/tiosess.sock ./target/release/tioctl status
 ```
 
-Example configs with autologin and a service list live in kernel/initramfs/.
+An example config with two autologin sessions and a service list lives in kernel/initramfs/.
 
 ## Documentation
 

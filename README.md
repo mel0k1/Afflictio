@@ -11,16 +11,16 @@
 
 ## Состояние
 
-Каркас уже загружается в QEMU целиком: liinit монтирует ФС и запускает службы, tiosessd поднимает autologin-сессию на виртуальном терминале, tioctl общается с демоном по unix-сокету, убитый демон перезапускается супервизором, SIGTERM в PID 1 приводит машину к корректному poweroff. Этот сценарий выполняется и локально, и в CI (job `qemu`). Этап 1 дорожной карты закрыт тегом v0.1.0. Графический стек и образы для конкретных устройств впереди, план работ в docs/roadmap.ru.md.
+Этапы 1 и 2 дорожной карты закрыты (теги v0.1.0 и v0.2.0). Каркас загружается в QEMU целиком: liinit монтирует ФС и запускает службы, tiosessd поднимает две autologin-сессии на VT1 и VT2, текст сессий виден на framebuffer через virtio-gpu, комбинация Ctrl+Alt+Fn переключает консоли через клавиатурный слушатель на HAL, убитый демон перезапускается супервизором, SIGTERM приводит к корректному poweroff. Весь сценарий выполняется в CI в job `qemu`. Графический стек и образы для конкретных устройств впереди, план работ в docs/roadmap.ru.md.
 
 ## Компоненты
 
 | Компонент | Назначение |
 | --- | --- |
 | `liinit` | PID 1: монтирование, супервизор служб, корректное выключение |
-| `tiosessd` | Менеджер сессий: autologin, VT-переключение, IPC на unix-сокете |
+| `tiosessd` | Менеджер сессий: autologin на несколько VT, переключение Ctrl+Alt+Fn, IPC |
 | `tioctl` | CLI: статус, устройства, запуск сессий, poweroff и reboot |
-| `tiohal` | Библиотека: evdev, power_supply, backlight |
+| `tiohal` | Библиотека: evdev с разбором Ctrl+Alt+Fn, power_supply, backlight |
 | `lioipc` | Общий протокол: JSON-сообщения для tiosessd и tioctl |
 
 Имена собраны из кусочков слова Afflictio: `li` + init, `tio` + hal и так далее. Конфиги живут в `/etc/afflictio/`, сокет в `/run/afflictio/tiosess.sock`, параметр ядра называется `afflictio.init=`.
@@ -44,13 +44,13 @@ cargo build --release --target aarch64-unknown-linux-musl
 
 ## Запуск в QEMU
 
-Smoke-тест делает весь путь: собирает aarch64-бинари, упаковывает initramfs из Alpine minirootfs, скачивает ядро `linux-virt` из netboot-репозитория Alpine, вынимает payload из EFI zboot-обёртки и грузит всё в `qemu-system-aarch64 -machine virt`. Внутри liinit запускает tiosessd с autologin, проверяющий скрипт ходит в IPC, убивает tiosessd и дожидается его перезапуска супервизором, затем отправляет SIGTERM в PID 1. Машина уходит в poweroff, QEMU завершается с кодом 0, в serial-логе остаются маркеры `SMOKE_IPC_OK`, `SMOKE_SESSIONS_OK`, `SMOKE_RESPAWN_OK`.
+Smoke-тест делает весь путь. Ядро `linux-virt` берется из apk-пакета Alpine, оттуда же в initramfs попадают модули `virtio-gpu`, `evdev` и `virtio-input` (fbcon и VT встроены в ядро). Бинари собираются musl-таргетом, initramfs упаковывается из Alpine minirootfs. QEMU запускается с `virtio-gpu-pci` и `virtio-keyboard-pci`, клавиатура отправляется через QMP-монитор командой send-key. Внутри машины probe-скрипт проверяет статус (две сессии, счетчик клавиатур больше нуля), переключает консоли Ctrl+Alt+F1 и Ctrl+Alt+F2 и сравнивает содержимое `/dev/fb0` между переключениями: кадры обязаны отличаться, это доказывает, что текст сессий реально попадает на экран. Затем убивается tiosessd, супервизор его перезапускает, SIGTERM приводит машину к poweroff, QEMU завершается с кодом 0.
 
 ```sh
 ./scripts/qemu-smoke.sh
 ```
 
-Требования к окружению: `qemu-system-aarch64`, `cpio`, `curl`, `cargo`. Аргументы окружения: `KERNEL_URL`, `MINIROOTFS_URL` (по умолчанию Alpine 3.22), `QEMU_TIMEOUT`, `QEMU_DATA_DIR` (каталог прошивок QEMU, если ROM-файлы лежат нестандартно). Артефакты остаются в `out/`: ядро, initramfs, serial-лог.
+Требования к окружению: `qemu-system-aarch64`, `cpio`, `curl`, `python3`, `cargo`. Аргументы окружения: `KERNEL_APK_URL`, `MINIROOTFS_URL` (по умолчанию Alpine 3.22), `QEMU_DATA_DIR` (каталог прошивок QEMU, если ROM-файлы лежат нестандартно). Артефакты остаются в `out/`: ядро, модули, initramfs, serial-лог.
 
 Сборка ядра из исходников с нашим фрагментом конфигурации описана в [kernel/README.md](kernel/README.md).
 
@@ -69,7 +69,7 @@ cargo run -p tiosess
 AFFLICTIO_SOCKET=/tmp/tiosess.sock ./target/release/tioctl status
 ```
 
-Пример конфигов с autologin и списком служб лежит в kernel/initramfs/.
+Пример конфига с двумя autologin-сессиями и списком служб лежит в kernel/initramfs/.
 
 ## Документация
 
