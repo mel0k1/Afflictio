@@ -1,10 +1,12 @@
 use lioipc::{Request, Response, SessionInfo};
 use serde::Deserialize;
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::io;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::process::CommandExt;
 use std::process::{Child, Command};
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 
 const TTY0: &str = "/dev/tty0";
 
@@ -26,7 +28,7 @@ const TIOCSCTTY_REQ: libc::c_ulong = libc::TIOCSCTTY as libc::c_ulong;
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct SessionConfig {
     #[serde(default)]
-    pub autologin: Option<Autologin>,
+    pub autologin: Vec<Autologin>,
     #[serde(default)]
     pub socket: Option<String>,
 }
@@ -35,6 +37,8 @@ pub struct SessionConfig {
 pub struct Autologin {
     pub user: String,
     pub command: Vec<String>,
+    #[serde(default)]
+    pub vt: Option<u32>,
 }
 
 impl SessionConfig {
@@ -69,6 +73,7 @@ pub struct SessionManager {
     sessions: Vec<TrackedSession>,
     next_id: u64,
     active_vt: u32,
+    keyboard_devices: Arc<AtomicU32>,
 }
 
 impl SessionManager {
@@ -78,14 +83,33 @@ impl SessionManager {
             sessions: Vec::new(),
             next_id: 1,
             active_vt: 1,
+            keyboard_devices: Arc::new(AtomicU32::new(0)),
         }
     }
 
     pub fn autostart(&mut self) -> io::Result<()> {
-        let Some(auto) = self.config.autologin.clone() else {
-            return Ok(());
-        };
-        self.start_session(auto.user, auto.command, 1)
+        let entries = self.config.autologin.clone();
+        let mut first_error = None;
+        for (index, auto) in entries.iter().enumerate() {
+            let vt = auto.vt.unwrap_or(index as u32 + 1);
+            if let Err(e) = self.start_session(auto.user.clone(), auto.command.clone(), vt) {
+                if first_error.is_none() {
+                    first_error = Some(e);
+                }
+            }
+        }
+        match first_error {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
+    }
+
+    pub fn keyboard_counter(&self) -> Arc<AtomicU32> {
+        self.keyboard_devices.clone()
+    }
+
+    pub fn keyboard_devices(&self) -> u32 {
+        self.keyboard_devices.load(Ordering::Relaxed)
     }
 
     pub fn active_vt(&self) -> u32 {
@@ -104,7 +128,10 @@ impl SessionManager {
             ));
         }
         activate_vt(vt)?;
-        let tty = File::open(format!("/dev/tty{vt}"))?;
+        let tty = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(format!("/dev/tty{vt}"))?;
         let tty_fd = tty.as_raw_fd();
         let mut cmd = Command::new(&command[0]);
         cmd.args(&command[1..])
@@ -154,6 +181,15 @@ impl SessionManager {
     }
 
     pub fn switch_vt(&mut self, vt: u32) -> io::Result<()> {
+        if vt == 0 || vt > 12 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "vt must be between 1 and 12",
+            ));
+        }
+        if vt == self.active_vt {
+            return Ok(());
+        }
         activate_vt(vt)?;
         self.active_vt = vt;
         Ok(())
@@ -167,6 +203,7 @@ pub fn dispatch(manager: &mut SessionManager, req: Request) -> Response {
             Response::Status {
                 sessions: manager.status(),
                 active_vt: manager.active_vt(),
+                keyboard_devices: manager.keyboard_devices(),
             }
         }
         Request::Start { user, command } => {
@@ -194,21 +231,51 @@ mod tests {
     #[test]
     fn empty_config_gets_defaults() {
         let config = SessionConfig::parse_config("").unwrap();
-        assert!(config.autologin.is_none());
+        assert!(config.autologin.is_empty());
         assert!(config.socket.is_none());
     }
 
     #[test]
     fn parses_autologin() {
         let raw = r#"
-[autologin]
+[[autologin]]
 user = "mel0k1"
 command = ["/usr/bin/afflictio-shell"]
 "#;
         let config = SessionConfig::parse_config(raw).unwrap();
-        let auto = config.autologin.expect("autologin present");
+        assert_eq!(config.autologin.len(), 1);
+        let auto = &config.autologin[0];
         assert_eq!(auto.user, "mel0k1");
         assert_eq!(auto.command, vec!["/usr/bin/afflictio-shell"]);
+        assert_eq!(auto.vt, None);
+    }
+
+    #[test]
+    fn parses_multiple_autologin_entries() {
+        let raw = r#"
+[[autologin]]
+user = "mel0k1"
+command = ["/bin/sh"]
+
+[[autologin]]
+user = "mel0k1"
+command = ["/bin/sh", "-c", "echo vt2"]
+vt = 3
+"#;
+        let config = SessionConfig::parse_config(raw).unwrap();
+        assert_eq!(config.autologin.len(), 2);
+        assert_eq!(config.autologin[0].vt, None);
+        assert_eq!(config.autologin[1].vt, Some(3));
+    }
+
+    #[test]
+    fn rejects_single_table_autologin() {
+        let raw = r#"
+[autologin]
+user = "mel0k1"
+command = ["/bin/sh"]
+"#;
+        assert!(SessionConfig::parse_config(raw).is_err());
     }
 
     #[test]
@@ -233,11 +300,29 @@ command = ["/usr/bin/afflictio-shell"]
             Response::Status {
                 sessions,
                 active_vt,
+                keyboard_devices,
             } => {
                 assert!(sessions.is_empty());
                 assert_eq!(active_vt, 1);
+                assert_eq!(keyboard_devices, 0);
             }
             _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn switch_to_active_vt_is_noop() {
+        let mut manager = SessionManager::new(SessionConfig::default());
+        let resp = dispatch(&mut manager, Request::Switch { vt: 1 });
+        assert!(matches!(resp, Response::Ok));
+    }
+
+    #[test]
+    fn switch_validates_range() {
+        let mut manager = SessionManager::new(SessionConfig::default());
+        for vt in [0u32, 13, 100] {
+            let resp = dispatch(&mut manager, Request::Switch { vt });
+            assert!(matches!(resp, Response::Error { .. }));
         }
     }
 }

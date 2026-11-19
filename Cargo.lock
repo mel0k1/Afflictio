@@ -48,7 +48,7 @@ checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
 
 [[package]]
 name = "liinit"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libc",
  "serde",
@@ -58,7 +58,7 @@ dependencies = [
 
 [[package]]
 name = "lioipc"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -173,7 +173,7 @@ dependencies = [
 
 [[package]]
 name = "tioctl"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libc",
  "lioipc",
@@ -183,18 +183,19 @@ dependencies = [
 
 [[package]]
 name = "tiohal"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libc",
 ]
 
 [[package]]
 name = "tiosess"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libc",
  "lioipc",
  "serde",
+ "tiohal",
  "toml",
 ]
 

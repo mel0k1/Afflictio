@@ -20,6 +20,7 @@ pub enum Response {
     Status {
         sessions: Vec<SessionInfo>,
         active_vt: u32,
+        keyboard_devices: u32,
     },
     Error {
         message: String,
@@ -147,15 +148,18 @@ mod tests {
                 state: String::from("running"),
             }],
             active_vt: 1,
+            keyboard_devices: 1,
         };
         let back: Response = decode(&encode(&resp)).unwrap();
         match back {
             Response::Status {
                 sessions,
                 active_vt,
+                keyboard_devices,
             } => {
                 assert_eq!(sessions.len(), 1);
                 assert_eq!(active_vt, 1);
+                assert_eq!(keyboard_devices, 1);
                 assert_eq!(sessions[0].user, "root");
             }
             _ => panic!("wrong variant"),

@@ -12,6 +12,15 @@ const EV_KEY: u16 = 0x01;
 const EV_ABS: u16 = 0x03;
 const SYN_REPORT: u16 = 0;
 
+pub const KEY_F1: u16 = 59;
+pub const KEY_F8: u16 = 66;
+pub const KEY_LEFTCTRL: u16 = 29;
+pub const KEY_RIGHTCTRL: u16 = 97;
+pub const KEY_LEFTALT: u16 = 56;
+pub const KEY_RIGHTALT: u16 = 100;
+
+const KEY_PRESS: i32 = 1;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EventKind {
     Key { code: u16, value: i32 },
@@ -136,6 +145,55 @@ pub fn parse_events(bytes: &[u8]) -> Vec<InputEvent> {
         offset += INPUT_EVENT_SIZE;
     }
     events
+}
+
+pub struct ComboTracker {
+    ctrl: bool,
+    alt: bool,
+}
+
+impl ComboTracker {
+    pub fn new() -> Self {
+        Self {
+            ctrl: false,
+            alt: false,
+        }
+    }
+
+    pub fn feed(&mut self, kind: &EventKind) -> Option<u8> {
+        let EventKind::Key { code, value } = kind else {
+            return None;
+        };
+        match *value {
+            0 => {
+                match *code {
+                    KEY_LEFTCTRL | KEY_RIGHTCTRL => self.ctrl = false,
+                    KEY_LEFTALT | KEY_RIGHTALT => self.alt = false,
+                    _ => {}
+                }
+                None
+            }
+            KEY_PRESS => {
+                match *code {
+                    KEY_LEFTCTRL | KEY_RIGHTCTRL => self.ctrl = true,
+                    KEY_LEFTALT | KEY_RIGHTALT => self.alt = true,
+                    _ => {}
+                }
+                if self.ctrl && self.alt && (KEY_F1..=KEY_F8).contains(code) {
+                    Some((code - KEY_F1 + 1) as u8)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+}
+
+impl Default for ComboTracker {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 pub struct Poller {
@@ -279,5 +337,68 @@ mod tests {
         bytes.push(0xff);
         let events = parse_events(&bytes);
         assert_eq!(events.len(), 1);
+    }
+
+    fn key(code: u16, value: i32) -> EventKind {
+        EventKind::Key { code, value }
+    }
+
+    #[test]
+    fn ctrl_alt_fn_switches_vt() {
+        let mut tracker = ComboTracker::new();
+        assert_eq!(tracker.feed(&key(KEY_LEFTCTRL, 1)), None);
+        assert_eq!(tracker.feed(&key(KEY_LEFTALT, 1)), None);
+        assert_eq!(tracker.feed(&key(KEY_F1 + 1, 1)), Some(2));
+        assert_eq!(tracker.feed(&key(KEY_F1 + 4, 1)), Some(5));
+    }
+
+    #[test]
+    fn combo_order_does_not_matter() {
+        let mut tracker = ComboTracker::new();
+        assert_eq!(tracker.feed(&key(KEY_RIGHTALT, 1)), None);
+        assert_eq!(tracker.feed(&key(KEY_RIGHTCTRL, 1)), None);
+        assert_eq!(tracker.feed(&key(KEY_F1 + 2, 1)), Some(3));
+    }
+
+    #[test]
+    fn release_resets_modifiers() {
+        let mut tracker = ComboTracker::new();
+        assert_eq!(tracker.feed(&key(KEY_LEFTCTRL, 1)), None);
+        assert_eq!(tracker.feed(&key(KEY_LEFTALT, 1)), None);
+        assert_eq!(tracker.feed(&key(KEY_LEFTCTRL, 0)), None);
+        assert_eq!(tracker.feed(&key(KEY_F1, 1)), None);
+        assert_eq!(tracker.feed(&key(KEY_LEFTCTRL, 1)), None);
+        assert_eq!(tracker.feed(&key(KEY_F1, 1)), Some(1));
+    }
+
+    #[test]
+    fn fn_alone_does_not_switch() {
+        let mut tracker = ComboTracker::new();
+        assert_eq!(tracker.feed(&key(KEY_F1 + 5, 1)), None);
+    }
+
+    #[test]
+    fn autorepeat_is_ignored() {
+        let mut tracker = ComboTracker::new();
+        assert_eq!(tracker.feed(&key(KEY_LEFTCTRL, 1)), None);
+        assert_eq!(tracker.feed(&key(KEY_LEFTALT, 1)), None);
+        assert_eq!(tracker.feed(&key(KEY_F1, 1)), Some(1));
+        assert_eq!(tracker.feed(&key(KEY_F1, 2)), None);
+    }
+
+    #[test]
+    fn out_of_range_keys_are_ignored() {
+        let mut tracker = ComboTracker::new();
+        assert_eq!(tracker.feed(&key(KEY_LEFTCTRL, 1)), None);
+        assert_eq!(tracker.feed(&key(KEY_LEFTALT, 1)), None);
+        assert_eq!(tracker.feed(&key(KEY_F8 + 1, 1)), None);
+        assert_eq!(tracker.feed(&key(KEY_F1 - 1, 1)), None);
+    }
+
+    #[test]
+    fn non_key_events_are_ignored() {
+        let mut tracker = ComboTracker::new();
+        assert_eq!(tracker.feed(&EventKind::Syn), None);
+        assert_eq!(tracker.feed(&EventKind::Abs { code: 0, value: 5 }), None);
     }
 }
