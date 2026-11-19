@@ -11,7 +11,7 @@ A mobile OS on the Linux kernel (AArch64) with a Rust userspace. The kernel come
 
 ## Status
 
-Roadmap stages 1 and 2 are done (tags v0.1.0 and v0.2.0). The skeleton boots in QEMU end to end: liinit mounts the filesystems and starts services, tiosessd brings up two autologin sessions on VT1 and VT2, session text shows up on the framebuffer through virtio-gpu, the Ctrl+Alt+Fn combo switches consoles through the HAL-based keyboard listener, a killed daemon comes back through the supervisor, and SIGTERM ends in a clean poweroff. The whole scenario runs in CI in the `qemu` job. The graphics stack and per-device images are still ahead; the plan lives in docs/roadmap.en.md.
+Roadmap stages 1-3 are done (tags v0.1.0, v0.2.0, v0.3.0). The skeleton boots in QEMU end to end: liinit mounts the filesystems and starts services, tiosessd brings up two autologin sessions on VT1 and VT2, session text shows up on the framebuffer through virtio-gpu, the Ctrl+Alt+Fn combo switches consoles through the HAL-based keyboard listener, a killed daemon comes back through the supervisor, and SIGTERM ends in a clean poweroff. The whole scenario runs in CI in the `qemu` job. The first device target is chosen (PinePhone) and the pmOS artifact pipeline builds in CI in the `device` job: the kernel, DTBs, modules, U-Boot, the kernel config check and rootfs.ext4. The graphics stack and flashing to hardware are still ahead; the plan lives in docs/roadmap.en.md.
 
 ## Components
 
@@ -54,6 +54,10 @@ Requirements: `qemu-system-aarch64`, `cpio`, `curl`, `python3`, `cargo`. Environ
 
 Building the kernel from source with the config fragment is described in [kernel/README.md](kernel/README.md).
 
+## Devices
+
+The first target is the [PinePhone](devices/pinephone/README.en.md). The stage 3 scripts pull postmarketOS pipeline artifacts (the 6.17.5 kernel, DTBs, 431 modules, U-Boot) from pinned apk packages, extract the exact kernel config from the embedded IKCONFIG stream and check it against 16 requirements of our userspace, then pack the boot directory, U-Boot and rootfs.ext4 into an SD card bundle. The pipeline is verified in CI; flashing to hardware belongs to stages 4-5.
+
 ## Running without QEMU
 
 The skeleton runs on any machine. In a terminal:
@@ -76,6 +80,7 @@ An example config with two autologin sessions and a service list lives in kernel
 - [Architecture (EN)](docs/architecture.en.md) / [Архитектура (RU)](docs/architecture.ru.md)
 - [Roadmap (EN)](docs/roadmap.en.md) / [Дорожная карта (RU)](docs/roadmap.ru.md)
 - [Kernel](kernel/README.md)
+- [PinePhone (EN)](devices/pinephone/README.en.md) / [PinePhone](devices/pinephone/README.md)
 
 ## License
 

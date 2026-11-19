@@ -11,7 +11,7 @@
 
 ## Состояние
 
-Этапы 1 и 2 дорожной карты закрыты (теги v0.1.0 и v0.2.0). Каркас загружается в QEMU целиком: liinit монтирует ФС и запускает службы, tiosessd поднимает две autologin-сессии на VT1 и VT2, текст сессий виден на framebuffer через virtio-gpu, комбинация Ctrl+Alt+Fn переключает консоли через клавиатурный слушатель на HAL, убитый демон перезапускается супервизором, SIGTERM приводит к корректному poweroff. Весь сценарий выполняется в CI в job `qemu`. Графический стек и образы для конкретных устройств впереди, план работ в docs/roadmap.ru.md.
+Этапы 1-3 дорожной карты закрыты (теги v0.1.0, v0.2.0, v0.3.0). Каркас загружается в QEMU целиком: liinit монтирует ФС и запускает службы, tiosessd поднимает две autologin-сессии на VT1 и VT2, текст сессий виден на framebuffer через virtio-gpu, комбинация Ctrl+Alt+Fn переключает консоли через клавиатурный слушатель на HAL, убитый демон перезапускается супервизором, SIGTERM приводит к корректному poweroff. Весь сценарий выполняется в CI в job `qemu`. Первый target выбран (PinePhone), и артефактный конвейер pmOS собирается в CI в job `device`: ядро, DTB, модули, U-Boot, проверка конфигурации ядра и rootfs.ext4. Графический стек и прошивка на железо впереди, план работ в docs/roadmap.ru.md.
 
 ## Компоненты
 
@@ -54,6 +54,10 @@ Smoke-тест делает весь путь. Ядро `linux-virt` берет�
 
 Сборка ядра из исходников с нашим фрагментом конфигурации описана в [kernel/README.md](kernel/README.md).
 
+## Устройства
+
+Первый target: [PinePhone](devices/pinephone/README.md). Скрипты этапа 3 тянут артефакты пайплайна postmarketOS (ядро 6.17.5, DTB, 431 модуль, U-Boot) с пинованных apk-пакетов, извлекают точный конфиг ядра из встроенного IKCONFIG-потока и сверяют с ним 16 требований нашего userspace, затем упаковывают boot-каталог, U-Boot и rootfs.ext4 в бандл для SD-карты. Конвейер проверяется в CI, прошивка на железо относится к этапам 4-5.
+
 ## Запуск без QEMU
 
 Каркас работает и без эмуляции. В терминале:
@@ -76,6 +80,7 @@ AFFLICTIO_SOCKET=/tmp/tiosess.sock ./target/release/tioctl status
 - [Архитектура (RU)](docs/architecture.ru.md) / [Architecture (EN)](docs/architecture.en.md)
 - [Дорожная карта (RU)](docs/roadmap.ru.md) / [Roadmap (EN)](docs/roadmap.en.md)
 - [Ядро](kernel/README.md)
+- [PinePhone](devices/pinephone/README.md) / [PinePhone (EN)](devices/pinephone/README.en.md)
 
 ## Лицензия
 

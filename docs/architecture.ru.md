@@ -52,6 +52,14 @@ HAL намеренно не тянет готовые библиотеки др�
 
 Внутри машины probe-скрипт ждет, пока в статусе появятся две сессии и ненулевой счетчик клавиатур, затем проверяет переключения: Ctrl+Alt+F1 и Ctrl+Alt+F2 отправляются хостом, probe дожидается смены активной консоли в статусе и снимает копию `/dev/fb0` на каждой консоли. Копии сравниваются побайтово: различие больше порога означает, что текст сессий реально отрисован на framebuffer каждой консоли. Дальше probe убивает tiosessd и убеждается, что супервизор его перезапустил, после чего отправляет SIGTERM в PID 1. Успех фиксируется маркерами `SMOKE_READY`, `SMOKE_SWITCH_VT1_OK`, `SMOKE_SWITCH_VT2_OK`, `SMOKE_FRAMES_DIFFER`, `SMOKE_RESPAWN_OK` в serial-логе и нулевым кодом выхода QEMU после корректного poweroff. Тот же скрипт выполняется в CI в job `qemu`.
 
+## Артефакты устройств
+
+Этап 3 переносит схему "артефакты из apk-пакетов" на реальное железо, пока без запуска pmbootstrap. `scripts/fetch-pm-kernel.sh` скачивает запиненные apk-пакеты pmOS-зеркала (`linux-postmarketos-allwinner` и `u-boot-pinephone`) и распаковывает их в `out/device/pinephone/`: ядро Image, DTB PinePhone трех ревизий, 431 модуль ядра и три варианта `u-boot-sunxi-with-spl`. Конфигурация ядра не публикуется pmOS отдельным файлом, но ядро собрано с `CONFIG_IKCONFIG`: скрипт находит маркер `IKCFG_ST` в Image и распаковывает встроенный config, так что проверки идут против конфигурации именно собранного ядра.
+
+`scripts/check-kernel-config.sh` сверяет `kernel/device-requirements.txt` с извлеченным конфигом: 10 обязательных требований userspace (devtmpfs, proc, sysfs, tmpfs, UNIX, ELF, VT, framebuffer_console, ext4, evdev) и 6 желательных. На ядре pmOS v25.12 все обязательные выполнены, единственное предупреждение `CONFIG_ANDROID_BINDERFS=n` уходит в план этапа 4: фрагмент из kernel/ пополняет defconfig pmOS, а не заменяет его.
+
+`scripts/pack-device-bundle.sh` собирает бандл для SD-карты: boot-каталог (Image, DTB, extlinux.conf с `init=/sbin/liinit`), u-boot-sunxi-with-spl и `rootfs.ext4`, где busybox, наши бинари, `/etc/afflictio` и модули упакованы `mke2fs -d` в ext4 без root. Собранный образ проверяется `debugfs` изнутри: читаются бинари и конфиг сессий. Все три шага выполняются в CI в job `device`; прошивка на железо остается за сессией bring-up (рецепт в devices/pinephone/README.md).
+
 ## Что осознанно не сделано
 
 Графический стек выше fbcon, сеть с DHCP, установка пакетов и образы для конкретных устройств остаются за рамками каркаса. Очередность работ и подход к интеграции libhybris, libgbinder и патчей postmarketOS описаны в docs/roadmap.ru.md. Это каркас, а не дистрибутив: задача сейчас в том, чтобы каждый слой можно было проверить отдельно, прежде чем собирать их вместе.
