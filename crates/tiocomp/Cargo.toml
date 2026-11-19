@@ -1,0 +1,15 @@
+[package]
+name = "tiocomp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "tiocompd"
+path = "src/main.rs"
+
+[dependencies]
+libc = { workspace = true }
+serde_json = { workspace = true }
+signal-hook = { workspace = true }
