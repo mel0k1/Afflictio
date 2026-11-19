@@ -1,0 +1,16 @@
+[package]
+name = "afflictio-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+afflictio-ipc = { path = "../afflictio-ipc" }
+afflictio-hal = { path = "../afflictio-hal" }
+libc = { workspace = true }
+serde_json = { workspace = true }
+
+[[bin]]
+name = "afflictioctl"
+path = "src/main.rs"
