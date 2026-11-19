@@ -1,0 +1,4 @@
+[[services]]
+name = "tiosessd"
+argv = ["/bin/tiosessd"]
+respawn = true
