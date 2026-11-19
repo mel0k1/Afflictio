@@ -1,11 +1,11 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/afflictio-ipc",
-    "crates/afflictio-hal",
-    "crates/afflictio-init",
-    "crates/afflictio-session",
-    "crates/afflictio-cli",
+    "crates/lioipc",
+    "crates/tiohal",
+    "crates/liinit",
+    "crates/tiosess",
+    "crates/tioctl",
 ]
 
 [workspace.package]

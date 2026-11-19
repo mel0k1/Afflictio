@@ -1,5 +1,5 @@
 [package]
-name = "afflictio-hal"
+name = "tiohal"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

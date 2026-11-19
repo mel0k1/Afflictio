@@ -1,7 +1,7 @@
-use afflictio_hal as hal;
-use afflictio_ipc as ipc;
-use afflictio_ipc::{Request, Response};
+use lioipc as ipc;
+use lioipc::{Request, Response};
 use std::fmt::Write as _;
+use tiohal as hal;
 
 pub enum Command {
     Help,
@@ -42,10 +42,10 @@ pub fn parse(args: &[String]) -> Result<Command, String> {
 
 fn usage(sub: &str) -> String {
     match sub {
-        "switch" => String::from("usage: afflictioctl switch <vt>"),
-        "session" => String::from("usage: afflictioctl session <user> <command> [args...]"),
+        "switch" => String::from("usage: tioctl switch <vt>"),
+        "session" => String::from("usage: tioctl session <user> <command> [args...]"),
         _ => String::from(
-            "usage: afflictioctl <command>\n\ncommands:\n  status\n  devices\n  session <user> <command> [args...]\n  switch <vt>\n  poweroff\n  reboot\n  help",
+            "usage: tioctl <command>\n\ncommands:\n  status\n  devices\n  session <user> <command> [args...]\n  switch <vt>\n  poweroff\n  reboot\n  help",
         ),
     }
 }

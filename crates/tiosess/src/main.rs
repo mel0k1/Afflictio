@@ -1,17 +1,17 @@
-use afflictio_ipc::{decode, encode, socket_path, Request};
+use lioipc::{decode, encode, socket_path, Request};
 use std::fs;
 use std::io::{BufRead, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 
-use afflictio_session::{dispatch, SessionConfig, SessionManager};
+use tiosess::{dispatch, SessionConfig, SessionManager};
 
 fn main() {
     let config_path = std::env::args()
         .nth(1)
         .unwrap_or_else(|| String::from("/etc/afflictio/session.toml"));
     if let Err(e) = run(&config_path) {
-        eprintln!("afflictio-sessiond: {e}");
+        eprintln!("tiosessd: {e}");
         std::process::exit(1);
     }
 }
@@ -27,16 +27,16 @@ fn run(config_path: &str) -> std::io::Result<()> {
     let listener = UnixListener::bind(&socket)?;
     let mut manager = SessionManager::new(config);
     if let Err(e) = manager.autostart() {
-        eprintln!("afflictio-sessiond: autostart skipped: {e}");
+        eprintln!("tiosessd: autostart skipped: {e}");
     }
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
                 if let Err(e) = handle_connection(stream, &mut manager) {
-                    eprintln!("afflictio-sessiond: request failed: {e}");
+                    eprintln!("tiosessd: request failed: {e}");
                 }
             }
-            Err(e) => eprintln!("afflictio-sessiond: accept failed: {e}"),
+            Err(e) => eprintln!("tiosessd: accept failed: {e}"),
         }
     }
     Ok(())
@@ -49,7 +49,7 @@ fn handle_connection(stream: UnixStream, manager: &mut SessionManager) -> std::i
     if reader.read_until(b'\n', &mut line)? == 0 {
         return Ok(());
     }
-    afflictio_ipc::trim_line(&mut line);
+    lioipc::trim_line(&mut line);
     if line.is_empty() {
         return Ok(());
     }

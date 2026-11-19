@@ -91,6 +91,12 @@ fn device_name(file: &File) -> io::Result<String> {
     Ok(text.trim_end_matches('\0').trim().to_string())
 }
 
+#[cfg(target_env = "musl")]
+fn eviocg(nr: u8, size: usize) -> libc::c_int {
+    ((2u64 << 30) | ((size as u64) << 16) | (0x45u64 << 8) | nr as u64) as libc::c_int
+}
+
+#[cfg(not(target_env = "musl"))]
 fn eviocg(nr: u8, size: usize) -> libc::c_ulong {
     (2u64 << 30) | ((size as u64) << 16) | (0x45u64 << 8) | nr as u64
 }

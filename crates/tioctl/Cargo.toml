@@ -1,16 +1,16 @@
 [package]
-name = "afflictio-cli"
+name = "tioctl"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
 [dependencies]
-afflictio-ipc = { path = "../afflictio-ipc" }
-afflictio-hal = { path = "../afflictio-hal" }
+lioipc = { path = "../lioipc" }
+tiohal = { path = "../tiohal" }
 libc = { workspace = true }
 serde_json = { workspace = true }
 
 [[bin]]
-name = "afflictioctl"
+name = "tioctl"
 path = "src/main.rs"

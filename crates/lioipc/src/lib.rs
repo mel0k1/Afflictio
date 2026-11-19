@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, BufRead, Write};
 use std::os::unix::net::UnixStream;
 
-pub const SOCKET_PATH: &str = "/run/afflictio/sessiond.sock";
+pub const SOCKET_PATH: &str = "/run/afflictio/tiosess.sock";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]

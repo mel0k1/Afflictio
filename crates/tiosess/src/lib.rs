@@ -1,4 +1,4 @@
-use afflictio_ipc::{Request, Response, SessionInfo};
+use lioipc::{Request, Response, SessionInfo};
 use serde::Deserialize;
 use std::fs::{File, OpenOptions};
 use std::io;
@@ -7,8 +7,21 @@ use std::os::unix::process::CommandExt;
 use std::process::{Child, Command};
 
 const TTY0: &str = "/dev/tty0";
+
+#[cfg(target_env = "musl")]
+const VT_ACTIVATE: libc::c_int = 0x5606 as libc::c_int;
+#[cfg(not(target_env = "musl"))]
 const VT_ACTIVATE: libc::c_ulong = 0x5606;
+
+#[cfg(target_env = "musl")]
+const VT_WAITACTIVE: libc::c_int = 0x5607 as libc::c_int;
+#[cfg(not(target_env = "musl"))]
 const VT_WAITACTIVE: libc::c_ulong = 0x5607;
+
+#[cfg(target_env = "musl")]
+const TIOCSCTTY_REQ: libc::c_int = libc::TIOCSCTTY as libc::c_int;
+#[cfg(not(target_env = "musl"))]
+const TIOCSCTTY_REQ: libc::c_ulong = libc::TIOCSCTTY as libc::c_ulong;
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct SessionConfig {
@@ -103,7 +116,7 @@ impl SessionManager {
                 if libc::setsid() < 0 {
                     return Err(io::Error::last_os_error());
                 }
-                if libc::ioctl(tty_fd, libc::TIOCSCTTY as libc::c_ulong, 0) < 0 {
+                if libc::ioctl(tty_fd, TIOCSCTTY_REQ, 0) < 0 {
                     return Err(io::Error::last_os_error());
                 }
                 Ok(())

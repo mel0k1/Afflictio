@@ -183,7 +183,7 @@ mod tests {
         let raw = r#"
 [[services]]
 name = "sessiond"
-argv = ["/usr/bin/afflictio-sessiond"]
+argv = ["/usr/bin/tiosessd"]
 respawn = true
 
 [[services]]
@@ -194,7 +194,7 @@ argv = ["/bin/true"]
         assert_eq!(config.services.len(), 2);
         assert!(config.services[0].respawn);
         assert!(!config.services[1].respawn);
-        assert_eq!(config.services[0].argv[0], "/usr/bin/afflictio-sessiond");
+        assert_eq!(config.services[0].argv[0], "/usr/bin/tiosessd");
     }
 
     #[test]

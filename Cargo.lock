@@ -3,51 +3,6 @@
 version = 4
 
 [[package]]
-name = "afflictio-cli"
-version = "0.1.0"
-dependencies = [
- "afflictio-hal",
- "afflictio-ipc",
- "libc",
- "serde_json",
-]
-
-[[package]]
-name = "afflictio-hal"
-version = "0.1.0"
-dependencies = [
- "libc",
-]
-
-[[package]]
-name = "afflictio-init"
-version = "0.1.0"
-dependencies = [
- "libc",
- "serde",
- "signal-hook",
- "toml",
-]
-
-[[package]]
-name = "afflictio-ipc"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "afflictio-session"
-version = "0.1.0"
-dependencies = [
- "afflictio-ipc",
- "libc",
- "serde",
- "toml",
-]
-
-[[package]]
 name = "equivalent"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -90,6 +45,24 @@ name = "libc"
 version = "0.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
+
+[[package]]
+name = "liinit"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "signal-hook",
+ "toml",
+]
+
+[[package]]
+name = "lioipc"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "memchr"
@@ -196,6 +169,33 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "tioctl"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "lioipc",
+ "serde_json",
+ "tiohal",
+]
+
+[[package]]
+name = "tiohal"
+version = "0.1.0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "tiosess"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "lioipc",
+ "serde",
+ "toml",
 ]
 
 [[package]]

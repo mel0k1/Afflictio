@@ -1,10 +1,12 @@
 [package]
-name = "afflictio-ipc"
+name = "liinit"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
 [dependencies]
+libc = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true }
+toml = { workspace = true }
+signal-hook = { workspace = true }
