@@ -198,6 +198,15 @@ pub fn load_modules(modules: &[ModuleSpec]) {
     }
 }
 
+pub const BOOT_OK: &str = "/var/lib/afflictio/boot-ok";
+
+pub fn mark_boot_ok(path: &str, running: usize) -> io::Result<()> {
+    if let Some(dir) = std::path::Path::new(path).parent() {
+        fs::create_dir_all(dir)?;
+    }
+    fs::write(path, format!("services {running}\n"))
+}
+
 pub fn run(config_path: &str) -> io::Result<()> {
     if unsafe { libc::getpid() } == 1 {
         bootstrap_mounts();
@@ -217,6 +226,11 @@ pub fn run(config_path: &str) -> io::Result<()> {
     load_modules(&config.modules);
     let mut supervisor = Supervisor::new(config);
     supervisor.start()?;
+    if unsafe { libc::getpid() } == 1 {
+        if let Err(e) = mark_boot_ok(BOOT_OK, supervisor.running()) {
+            eprintln!("liinit: boot-ok marker skipped: {e}");
+        }
+    }
     let mut signals = Signals::new([SIGCHLD, SIGTERM, SIGINT]).map_err(io::Error::other)?;
     for signal in signals.forever() {
         match signal {
@@ -308,6 +322,16 @@ name = "evdev"
     #[test]
     fn missing_param_is_none() {
         assert_eq!(init_param("quiet splash"), None);
+    }
+
+    #[test]
+    fn writes_boot_ok_marker() {
+        let dir = std::env::temp_dir().join(format!("liinit-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let path = dir.join("var/lib/afflictio/boot-ok");
+        mark_boot_ok(path.to_str().unwrap(), 3).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "services 3\n");
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
