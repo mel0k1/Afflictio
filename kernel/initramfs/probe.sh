@@ -198,6 +198,15 @@ if ! printf '%s\n' "${out}" | grep -q '"boot_ok":true'; then
   exit 1
 fi
 echo SMOKE_AB_STATUS_OK
+out=$(/bin/liota verify /dev/vdb 2>&1) || { echo SMOKE_AB_SIGN_FAIL; echo "${out}"; kill -TERM 1; exit 1; }
+echo "${out}"
+echo SMOKE_AB_SIGN_OK
+if /bin/liota verify /dev/vdc > /dev/null 2>&1; then
+  echo SMOKE_AB_SIGN_UNEXPECTED
+  kill -TERM 1
+  exit 1
+fi
+echo SMOKE_AB_SIGN_REJECT
 if ! /bin/liota switch; then
   echo SMOKE_AB_SWITCH_FAIL
   kill -TERM 1

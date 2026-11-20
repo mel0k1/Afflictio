@@ -30,6 +30,27 @@ mke2fs -q -F -t ext4 -d "${OUT_DIR}/boot-tree" -L boot "${OUT_DIR}/boot.img" 32M
 python3 scripts/assemble-img.py assemble "${OUT_DIR}/boot.img" "${OUT_DIR}/rootfs.ext4" "${OUT_DIR}/rootfs.ext4" - "${OUT_DIR}/ab-disk.img"
 python3 scripts/assemble-img.py verify "${OUT_DIR}/ab-disk.img"
 
+if [ ! -f "${OUT_DIR}/keys/update.pub" ]; then
+  ./target/release/liota keygen "${OUT_DIR}/keys/update.key" "${OUT_DIR}/keys/update.pub"
+fi
+dd if=/dev/urandom of="${OUT_DIR}/update-body.bin" bs=1M count=1 status=none
+./target/release/liota sign "${OUT_DIR}/keys/update.key" "${OUT_DIR}/update-body.bin" "${OUT_DIR}/update.bin" > "${OUT_DIR}/sign.log"
+AFFLICTIO_UPDATE_PUB="${OUT_DIR}/keys/update.pub" ./target/release/liota verify "${OUT_DIR}/update.bin"
+cp "${OUT_DIR}/update.bin" "${OUT_DIR}/update-tampered.bin"
+python3 - "${OUT_DIR}/update-tampered.bin" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+data = bytearray(open(path, "rb").read())
+data[-1048576 + 500] ^= 1
+open(path, "wb").write(bytes(data))
+PYEOF
+if AFFLICTIO_UPDATE_PUB="${OUT_DIR}/keys/update.pub" ./target/release/liota verify "${OUT_DIR}/update-tampered.bin" > /dev/null 2>&1; then
+  echo "tampered payload unexpectedly verified"
+  exit 1
+fi
+echo "update payloads ready: signed and tampered"
+
 DTB_PROBE="${OUT_DIR}/virt-dtb.bin"
 MODEM=0
 if qemu-system-aarch64 \
@@ -59,6 +80,8 @@ boot_slot_a() {
       -device virtio-gpu-pci \
       -device virtio-keyboard-pci \
       -drive file="${OUT_DIR}/ab-disk.img",if=virtio,format=raw \
+      -drive file="${OUT_DIR}/update.bin",if=virtio,format=raw \
+      -drive file="${OUT_DIR}/update-tampered.bin",if=virtio,format=raw \
       -kernel "${OUT_DIR}/kernel/Image" \
       -initrd "${OUT_DIR}/rootfs-initramfs.cpio.gz" \
       -append "console=ttyAMA0 panic=-1 root=UUID=${ROOTFS_UUID} afflictio.abtest=1" \
@@ -72,6 +95,8 @@ boot_slot_a() {
       -device virtio-gpu-pci \
       -device virtio-keyboard-pci \
       -drive file="${OUT_DIR}/ab-disk.img",if=virtio,format=raw \
+      -drive file="${OUT_DIR}/update.bin",if=virtio,format=raw \
+      -drive file="${OUT_DIR}/update-tampered.bin",if=virtio,format=raw \
       -kernel "${OUT_DIR}/kernel/Image" \
       -initrd "${OUT_DIR}/rootfs-initramfs.cpio.gz" \
       -append "console=ttyAMA0 panic=-1 root=UUID=${ROOTFS_UUID} afflictio.abtest=1" \
@@ -218,6 +243,14 @@ else
 fi
 if ! grep -q "SMOKE_AB_STATUS_OK" "${LOG}"; then
   echo "rootfs smoke failed: liota status on slot a missing"
+  exit 1
+fi
+if ! grep -q "SMOKE_AB_SIGN_OK" "${LOG}"; then
+  echo "rootfs smoke failed: signed payload verification missing"
+  exit 1
+fi
+if ! grep -q "SMOKE_AB_SIGN_REJECT" "${LOG}"; then
+  echo "rootfs smoke failed: tampered payload rejection missing"
   exit 1
 fi
 if ! grep -q "SMOKE_AB_SWITCH_OK" "${LOG}"; then

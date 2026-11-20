@@ -15,11 +15,17 @@ if ! command -v mke2fs > /dev/null 2>&1; then
 fi
 
 cargo build --release --target aarch64-unknown-linux-musl
+cargo build --release
 ./scripts/prepare-kernel.sh
 ./scripts/fetch-pm-kernel.sh
 
 BIN_DIR="target/aarch64-unknown-linux-musl/release"
 ROOT="${OUT_DIR}/rootfs"
+
+mkdir -p "${OUT_DIR}/keys"
+if [ ! -f "${OUT_DIR}/keys/update.pub" ]; then
+  ./target/release/liota keygen "${OUT_DIR}/keys/update.key" "${OUT_DIR}/keys/update.pub"
+fi
 
 if [ ! -f "${OUT_DIR}/minirootfs.tar.gz" ]; then
   curl -fL --max-time 300 "${MINIROOTFS_URL}" -o "${OUT_DIR}/minirootfs.tar.gz"
@@ -44,6 +50,7 @@ install -m 0644 devices/pinephone/etc/init.toml "${ROOT}/etc/afflictio/init.toml
 install -m 0644 devices/pinephone/etc/session.toml "${ROOT}/etc/afflictio/session.toml"
 install -m 0644 devices/pinephone/etc/lioat.toml "${ROOT}/etc/afflictio/lioat.toml"
 install -m 0644 devices/pinephone/etc/slots.toml "${ROOT}/etc/afflictio/slots.toml"
+install -m 0644 "${OUT_DIR}/keys/update.pub" "${ROOT}/etc/afflictio/updates.pub"
 
 cat > "${ROOT}/etc/passwd" <<'EOF'
 root:x:0:0:root:/root:/bin/sh
