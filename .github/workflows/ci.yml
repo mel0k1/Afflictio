@@ -42,6 +42,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-system-arm cpio
       - run: ./scripts/qemu-smoke.sh
+  rootfs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-system-arm cpio
+      - run: ./scripts/qemu-rootfs-smoke.sh
   device:
     runs-on: ubuntu-latest
     steps:
