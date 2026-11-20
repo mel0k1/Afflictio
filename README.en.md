@@ -11,7 +11,7 @@ A mobile OS on the Linux kernel (AArch64) with a Rust userspace. The kernel come
 
 ## Status
 
-Roadmap stages 1-6 are done (tags v0.1.0 through v0.6.0). The skeleton boots in QEMU end to end: liinit mounts the filesystems and starts services, tiosessd brings up two autologin sessions on VT1 and VT2 with a real switch to the user uid, the Ctrl+Alt+Fn combo switches consoles through the HAL-based keyboard listener, a killed daemon comes back through the supervisor, and SIGTERM ends in a clean poweroff. tiocompd draws a compositor frame directly through KMS/DRM (page flips on dumb buffers), liobinder covers the Binder transport layer, and lioatd holds the AT conversation with the modem (the 27.007 probe: model, SIM, signal, registration). The distribution rootfs is assembled (alpine base, Afflictio packages, users, two module trees, a manifest) and boots in QEMU with the `SMOKE_UID_OK`, `SMOKE_KMS_FLIPS_OK` and `SMOKE_MODEM_AT_OK` markers (an EG25-G stub on the second PL011) in the `rootfs` job; flashable PinePhone images (MBR, u-boot at the 8 KB offset, one ext4 partition with boot+root, verified via debugfs) build in the `device` job. Flashing to hardware stays for bring-up; the plan lives in docs/roadmap.en.md.
+Roadmap stages 1-7 are done (tags v0.1.0 through v0.7.0). The skeleton boots in QEMU end to end: liinit mounts the filesystems and starts services, tiosessd brings up two autologin sessions on VT1 and VT2 with a real switch to the user uid, the Ctrl+Alt+Fn combo switches consoles through the HAL-based keyboard listener, a killed daemon comes back through the supervisor, and SIGTERM ends in a clean poweroff. tiocompd draws a compositor frame directly through KMS/DRM (page flips on dumb buffers), liobinder covers the Binder transport layer, and lioatd holds the AT conversation with the modem (the 27.007 probe: model, SIM, signal, registration). The distribution rootfs is assembled (alpine base, Afflictio packages, users, two module trees, a manifest) and boots in QEMU with the `SMOKE_UID_OK`, `SMOKE_KMS_FLIPS_OK` and `SMOKE_MODEM_AT_OK` markers (an EG25-G stub on the second PL011) in the `rootfs` job; the update model is settled as A/B slots: a boot partition and two rootfs slots, liota switches slots through extlinux, and the smoke verifies the switch with two boots (`SMOKE_AB_SWITCH_OK`, `SMOKE_AB_BOOT_B_OK`); flashable PinePhone images (MBR, u-boot at the 8 KB offset, three partitions, verified via debugfs) build in the `device` job. Flashing to hardware stays for bring-up; the plan lives in docs/roadmap.en.md.
 
 ## Components
 
@@ -23,6 +23,7 @@ Roadmap stages 1-6 are done (tags v0.1.0 through v0.6.0). The skeleton boots in 
 | `tiohal` | Library: evdev with Ctrl+Alt+Fn parsing, power_supply, backlight |
 | `lioipc` | Shared protocol: JSON messages for tiosessd and tioctl |
 | `lioat` | The `lioatd` daemon and `modemctl`: AT channel on termios, the 27.007 probe, device-list fallback |
+| `liota` | A/B updates: slot status, switching through extlinux, payload install |
 | `tiocomp` | The `tiocompd` daemon: compositor on top of KMS/DRM, dumb buffers, page flips |
 | `liobinder` | Binder transport: parcels, `BINDER_WRITE_READ`, servicemanager client |
 
