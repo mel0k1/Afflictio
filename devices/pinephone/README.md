@@ -15,7 +15,7 @@ PinePhone (PINE64, Allwinner A64) выбран как первое устрой�
 
 ## Проверка совместимости
 
-`scripts/check-kernel-config.sh` сверяет `kernel/device-requirements.txt` с извлеченным config: 16 требований, из них 10 обязательных и 6 желательных. Результат на ядре pmOS v25.12: все обязательные выполнены (devtmpfs, proc, sysfs, tmpfs, UNIX, ELF, VT и framebuffer_console, ext4, evdev). Из конфига также известно, что `CONFIG_EXT4_FS=y`, `CONFIG_MMC_SUNXI=y`, `CONFIG_MMC_BLOCK=y` и `CONFIG_DRM_SUN4I=y` встроены в ядро, поэтому rootfs монтируется без initramfs, а `init=/sbin/liinit` работает напрямую. Одно предупреждение:
+`scripts/check-kernel-config.sh` сверяет `kernel/device-requirements.txt` с извлеченным config: 19 требований, из них 13 обязательных и 6 желательных. Результат на ядре pmOS v25.12: все обязательные выполнены (devtmpfs, proc, sysfs, tmpfs, UNIX, ELF, VT и framebuffer_console, ext4, evdev, USB-serial-набор модема). Из конфига также известно, что `CONFIG_EXT4_FS=y`, `CONFIG_MMC_SUNXI=y`, `CONFIG_MMC_BLOCK=y` и `CONFIG_DRM_SUN4I=y` встроены в ядро, поэтому rootfs монтируется без initramfs, а `init=/sbin/liinit` работает напрямую. Единственное предупреждение прежнее:
 
 - `CONFIG_ANDROID_BINDERFS=n` при `CONFIG_ANDROID_BINDER_IPC=y`: binder доступен, но binderfs-монтирование включается нашим фрагментом конфигурации при пересборке ядра pmOS.
 
@@ -26,15 +26,19 @@ PinePhone (PINE64, Allwinner A64) выбран как первое устрой�
 `scripts/build-rootfs.sh` собирает дистрибутивный rootfs (в CI в job `device`):
 
 - база: alpine minirootfs aarch64 (busybox, musl, apk для расширения на устройстве);
-- пакеты Afflictio: `liinit` как `/sbin/init`, `tiosessd`, `tioctl`, `tiocompd`, `binderctl`, `probe.sh`;
+- пакеты Afflictio: `liinit` как `/sbin/init`, `tiosessd`, `tioctl`, `tiocompd`, `binderctl`, `lioatd`, `modemctl`, `probe.sh`;
 - пользователи: root и `mel0k1` (uid 1000, пароли залочены, автологин через tiosessd с реальным setuid);
 - оба дерева модулей: `6.12.118-0-virt` для QEMU и `6.17.5` для PinePhone;
-- `/etc/afflictio/init.toml` с секциями `[[modules]]`, `[[mounts]]` (binderfs) и службами tiosessd/tiocompd/probe;
+- `/etc/afflictio/init.toml` с секциями `[[modules]]`, `[[mounts]]` (binderfs) и службами lioatd/tiosessd/tiocompd/probe, `/etc/afflictio/lioat.toml` со списком модемных устройств;
 - `/boot` с Image и тремя DTB, `/extlinux/extlinux.conf` с `root=UUID`;
 - `/etc/afflictio/manifest.json` с версией и списком пакетов;
 - `out/rootfs.ext4`: ext4 c фиксированным UUID, `/home/mel0k1` получает uid 1000 через `debugfs sif`.
 
-Тот же rootfs загружается в QEMU в job `rootfs` (`scripts/qemu-rootfs-smoke.sh`): мини-initramfs (`scripts/mkrootfs-initramfs.sh`) поднимает `virtio_blk` и `ext4`, делает `switch_root` на rootfs.ext4, дальше PID 1 настоящий `liinit` из rootfs. Сценарий проходит с маркерами SMOKE_READY, SMOKE_SWITCH_VT1_OK, SMOKE_SWITCH_VT2_OK, SMOKE_FRAMES_DIFFER, SMOKE_UID_OK (проверка, что сессии работают от uid 1000), SMOKE_KMS_FLIPS_OK (композитор на virtio-gpu), SMOKE_RESPAWN_OK и корректным poweroff.
+Тот же rootfs загружается в QEMU в job `rootfs` (`scripts/qemu-rootfs-smoke.sh`): мини-initramfs (`scripts/mkrootfs-initramfs.sh`) поднимает `virtio_blk` и `ext4`, делает `switch_root` на rootfs.ext4, дальше PID 1 настоящий `liinit` из rootfs. Сценарий проходит с маркерами SMOKE_READY, SMOKE_SWITCH_VT1_OK, SMOKE_SWITCH_VT2_OK, SMOKE_FRAMES_DIFFER, SMOKE_UID_OK (проверка, что сессии работают от uid 1000), SMOKE_KMS_FLIPS_OK (композитор на virtio-gpu), SMOKE_RESPAWN_OK, `SMOKE_MODEM_AT_OK` (модемная заглушка на втором PL011) и корректным poweroff.
+
+## Модем
+
+PinePhone несет Quectel EG25-G на USB; mainline-ядро pmOS собирает его драйверы модулями (`CONFIG_USB_OPTION`, `CONFIG_USB_NET_QMI_WWAN` входят в список обязательных требований как `=y|m`), и AT-порт модема появляется как `/dev/ttyUSB2`. Демон `lioatd` читает `/etc/afflictio/lioat.toml` и открывает первый доступный порт из списка `devices` — на железе это ttyUSB2, в QEMU второй PL011 `/dev/ttyAMA1`. Опрос раз в `probe_interval` секунд обновляет снимок: модель, состояние SIM (`READY`), уровень сигнала в CSQ и dBm, регистрацию на сети; `modemctl status` печатает его в JSON, `modemctl at "AT+..."` отправляет произвольную команду через unix-socket демона. В QEMU-смоук реальный EG25-G заменяет `scripts/modem-emu.py` — заглушка отвечает тем же набором команд, и lioatd фиксирует `SMOKE_MODEM_AT_OK ... pin=READY rssi=21`. Передача данных через QMI и проверка исчезновения USB-устройства остаются на bring-up.
 
 ## Образ для SD-карты
 

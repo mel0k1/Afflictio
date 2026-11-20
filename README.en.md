@@ -11,7 +11,7 @@ A mobile OS on the Linux kernel (AArch64) with a Rust userspace. The kernel come
 
 ## Status
 
-Roadmap stages 1-5 are done (tags v0.1.0 through v0.5.0). The skeleton boots in QEMU end to end: liinit mounts the filesystems and starts services, tiosessd brings up two autologin sessions on VT1 and VT2 with a real switch to the user uid, the Ctrl+Alt+Fn combo switches consoles through the HAL-based keyboard listener, a killed daemon comes back through the supervisor, and SIGTERM ends in a clean poweroff. tiocompd draws a compositor frame directly through KMS/DRM (page flips on dumb buffers), and liobinder covers the Binder transport layer. The distribution rootfs is assembled (alpine base, Afflictio packages, users, two module trees, a manifest) and boots in QEMU with the `SMOKE_UID_OK` and `SMOKE_KMS_FLIPS_OK` markers in the `rootfs` job; flashable PinePhone images (MBR, u-boot at the 8 KB offset, one ext4 partition with boot+root, verified via debugfs) build in the `device` job. Flashing to hardware stays for bring-up; the plan lives in docs/roadmap.en.md.
+Roadmap stages 1-6 are done (tags v0.1.0 through v0.6.0). The skeleton boots in QEMU end to end: liinit mounts the filesystems and starts services, tiosessd brings up two autologin sessions on VT1 and VT2 with a real switch to the user uid, the Ctrl+Alt+Fn combo switches consoles through the HAL-based keyboard listener, a killed daemon comes back through the supervisor, and SIGTERM ends in a clean poweroff. tiocompd draws a compositor frame directly through KMS/DRM (page flips on dumb buffers), liobinder covers the Binder transport layer, and lioatd holds the AT conversation with the modem (the 27.007 probe: model, SIM, signal, registration). The distribution rootfs is assembled (alpine base, Afflictio packages, users, two module trees, a manifest) and boots in QEMU with the `SMOKE_UID_OK`, `SMOKE_KMS_FLIPS_OK` and `SMOKE_MODEM_AT_OK` markers (an EG25-G stub on the second PL011) in the `rootfs` job; flashable PinePhone images (MBR, u-boot at the 8 KB offset, one ext4 partition with boot+root, verified via debugfs) build in the `device` job. Flashing to hardware stays for bring-up; the plan lives in docs/roadmap.en.md.
 
 ## Components
 
@@ -22,6 +22,7 @@ Roadmap stages 1-5 are done (tags v0.1.0 through v0.5.0). The skeleton boots in 
 | `tioctl` | CLI: status, devices, session start, poweroff and reboot |
 | `tiohal` | Library: evdev with Ctrl+Alt+Fn parsing, power_supply, backlight |
 | `lioipc` | Shared protocol: JSON messages for tiosessd and tioctl |
+| `lioat` | The `lioatd` daemon and `modemctl`: AT channel on termios, the 27.007 probe, device-list fallback |
 | `tiocomp` | The `tiocompd` daemon: compositor on top of KMS/DRM, dumb buffers, page flips |
 | `liobinder` | Binder transport: parcels, `BINDER_WRITE_READ`, servicemanager client |
 
@@ -60,7 +61,7 @@ Building the kernel from source with the config fragment is described in [kernel
 
 ## Devices
 
-The first target is the [PinePhone](devices/pinephone/README.en.md). The stage 3 scripts pull postmarketOS pipeline artifacts (the 6.17.5 kernel, DTBs, 431 modules, U-Boot) from pinned apk packages, extract the exact kernel config from the embedded IKCONFIG stream and check it against 16 requirements of our userspace, then pack the boot directory, U-Boot and rootfs.ext4 into an SD card bundle. The pipeline is verified in CI; flashing to hardware belongs to stages 4-5.
+The first target is the [PinePhone](devices/pinephone/README.en.md). The stage 3 scripts pull postmarketOS pipeline artifacts (the 6.17.5 kernel, DTBs, 431 modules, U-Boot) from pinned apk packages, extract the exact kernel config from the embedded IKCONFIG stream and check it against 19 requirements of our userspace, then pack the boot directory, U-Boot and rootfs.ext4 into an SD card bundle. The pipeline is verified in CI; flashing to hardware belongs to bring-up.
 
 ## Running without QEMU
 

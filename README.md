@@ -11,7 +11,7 @@
 
 ## Состояние
 
-Этапы 1-5 дорожной карты закрыты (теги v0.1.0 - v0.5.0). Каркас загружается в QEMU целиком: liinit монтирует ФС и запускает службы, tiosessd поднимает две autologin-сессии на VT1 и VT2 с реальным переключением на uid пользователя, комбинация Ctrl+Alt+Fn переключает консоли через клавиатурный слушатель на HAL, убитый демон перезапускается супервизором, SIGTERM приводит к корректному poweroff. tiocompd рисует композиторный кадр напрямую через KMS/DRM (page-flip на dumb-буферах), liobinder закрывает транспортный слой Binder. Собран дистрибутивный rootfs (alpine-база, пакеты Afflictio, пользователи, два дерева модулей, манифест), который загружается в QEMU с маркерами `SMOKE_UID_OK` и `SMOKE_KMS_FLIPS_OK` в job `rootfs`, и flashable-образы для PinePhone (MBR, u-boot на смещении 8 КБ, один ext4-раздел с boot+root, проверка через debugfs) в job `device`. Прошивка на железо остается за bring-up, план работ в docs/roadmap.ru.md.
+Этапы 1-6 дорожной карты закрыты (теги v0.1.0 - v0.6.0). Каркас загружается в QEMU целиком: liinit монтирует ФС и запускает службы, tiosessd поднимает две autologin-сессии на VT1 и VT2 с реальным переключением на uid пользователя, комбинация Ctrl+Alt+Fn переключает консоли через клавиатурный слушатель на HAL, убитый демон перезапускается супервизором, SIGTERM приводит к корректному poweroff. tiocompd рисует композиторный кадр напрямую через KMS/DRM (page-flip на dumb-буферах), liobinder закрывает транспортный слой Binder, lioatd ведет AT-диалог с модемом (probe 27.007: модель, SIM, сигнал, регистрация). Собран дистрибутивный rootfs (alpine-база, пакеты Afflictio, пользователи, два дерева модулей, манифест), который загружается в QEMU с маркерами `SMOKE_UID_OK`, `SMOKE_KMS_FLIPS_OK` и `SMOKE_MODEM_AT_OK` (заглушка EG25-G на втором PL011) в job `rootfs`, и flashable-образы для PinePhone (MBR, u-boot на смещении 8 КБ, один ext4-раздел с boot+root, проверка через debugfs) в job `device`. Прошивка на железо остается за bring-up, план работ в docs/roadmap.ru.md.
 
 ## Компоненты
 
@@ -22,6 +22,10 @@
 | `tioctl` | CLI: статус, устройства, запуск сессий, poweroff и reboot |
 | `tiohal` | Библиотека: evdev с разбором Ctrl+Alt+Fn, power_supply, backlight |
 | `lioipc` | Общий протокол: JSON-сообщения для tiosessd и tioctl |
+| `lioatd` | Модемный демон: AT-канал на termios, probe 27.007, фолбэк по списку устройств |
+| `modemctl` | CLI к lioatd: снимок состояния и произвольные AT-команды |
+| `tiocomp` | Демон `tiocompd`: композитор поверх KMS/DRM, dumb-буферы, page-flip |
+| `liobinder` | Транспорт Binder: парцеллы, `BINDER_WRITE_READ`, клиент servicemanager |
 
 Имена собраны из кусочков слова Afflictio: `li` + init, `tio` + hal и так далее. Конфиги живут в `/etc/afflictio/`, сокет в `/run/afflictio/tiosess.sock`, параметр ядра называется `afflictio.init=`.
 
@@ -56,7 +60,7 @@ Smoke-тест делает весь путь. Ядро `linux-virt` берет�
 
 ## Устройства
 
-Первый target: [PinePhone](devices/pinephone/README.md). Скрипты этапа 3 тянут артефакты пайплайна postmarketOS (ядро 6.17.5, DTB, 431 модуль, U-Boot) с пинованных apk-пакетов, извлекают точный конфиг ядра из встроенного IKCONFIG-потока и сверяют с ним 16 требований нашего userspace, затем упаковывают boot-каталог, U-Boot и rootfs.ext4 в бандл для SD-карты. Конвейер проверяется в CI, прошивка на железо относится к этапам 4-5.
+Первый target: [PinePhone](devices/pinephone/README.md). Скрипты этапа 3 тянут артефакты пайплайна postmarketOS (ядро 6.17.5, DTB, 431 модуль, U-Boot) с пинованных apk-пакетов, извлекают точный конфиг ядра из встроенного IKCONFIG-потока и сверяют с ним 19 требований нашего userspace, затем упаковывают boot-каталог, U-Boot и rootfs.ext4 в бандл для SD-карты. Конвейер проверяется в CI, прошивка на железо относится к bring-up.
 
 ## Запуск без QEMU
 

@@ -2,7 +2,7 @@
 
 ## Общая схема
 
-Afflictio состоит из ядра Linux (AArch64) и набора Rust-компонентов в пользовательском пространстве. Ядро собирается из upstream с конфигурационным фрагментом репозитория, пользователю достаются семь крейтов, собранных в один workspace. Обмен между демоном сессий и утилитой управления идет через unix-сокет и JSON-сообщения фиксированного формата.
+Afflictio состоит из ядра Linux (AArch64) и набора Rust-компонентов в пользовательском пространстве. Ядро собирается из upstream с конфигурационным фрагментом репозитория, пользователю достаются восемь крейтов, собранных в один workspace. Обмен между демонами и утилитами управления идет через unix-сокеты и JSON-сообщения фиксированного формата.
 
 Загрузка выглядит так: загрузчик передает ядру `Image` и initramfs, ядро распаковывает архив и запускает `/init` из него, а тот exec-ается в `liinit` как PID 1. Init определяет путь к своему конфигу по параметру ядра `afflictio.init=` (по умолчанию `/etc/afflictio/init.toml`), поднимает псевдо-ФС (`/proc`, `/sys`, `/dev`, `/run`), загружает модули устройств (`virtio-gpu`, `evdev`, `virtio-input` в QEMU-окружении) и запускает перечисленные в конфиге службы.
 
@@ -17,6 +17,7 @@ Afflictio состоит из ядра Linux (AArch64) и набора Rust-ко
 | `lioipc` | Типы запросов и ответов, кодирование JSON-строк, клиент сокета |
 | `tiocomp` | Демон `tiocompd`: композитор поверх KMS/DRM, dumb-буферы, page-flip |
 | `liobinder` | Транспорт Binder: парцелл, `BINDER_WRITE_READ`, клиент servicemanager, утилита `binderctl` |
+| `lioat` | Демон `lioatd` и утилита `modemctl`: AT-канал на termios, probe 27.007, фолбэк по списку устройств |
 
 ### liinit
 
@@ -58,7 +59,7 @@ HAL намеренно не тянет готовые библиотеки др�
 
 Этап 3 переносит схему "артефакты из apk-пакетов" на реальное железо, пока без запуска pmbootstrap. `scripts/fetch-pm-kernel.sh` скачивает запиненные apk-пакеты pmOS-зеркала (`linux-postmarketos-allwinner` и `u-boot-pinephone`) и распаковывает их в `out/device/pinephone/`: ядро Image, DTB PinePhone трех ревизий, 431 модуль ядра и три варианта `u-boot-sunxi-with-spl`. Конфигурация ядра не публикуется pmOS отдельным файлом, но ядро собрано с `CONFIG_IKCONFIG`: скрипт находит маркер `IKCFG_ST` в Image и распаковывает встроенный config, так что проверки идут против конфигурации именно собранного ядра.
 
-`scripts/check-kernel-config.sh` сверяет `kernel/device-requirements.txt` с извлеченным конфигом: 10 обязательных требований userspace (devtmpfs, proc, sysfs, tmpfs, UNIX, ELF, VT, framebuffer_console, ext4, evdev) и 6 желательных. На ядре pmOS v25.12 все обязательные выполнены, единственное предупреждение `CONFIG_ANDROID_BINDERFS=n` уходит в план этапа 4: фрагмент из kernel/ пополняет defconfig pmOS, а не заменяет его.
+`scripts/check-kernel-config.sh` сверяет `kernel/device-requirements.txt` с извлеченным конфигом: 13 обязательных требований userspace (devtmpfs, proc, sysfs, tmpfs, UNIX, ELF, VT, framebuffer_console, ext4, evdev плюс USB-serial-набор модема: USB_SERIAL, USB_SERIAL_OPTION, USB_NET_QMI_WWAN) и 6 желательных. На ядре pmOS v25.12 все обязательные выполнены, единственное предупреждение `CONFIG_ANDROID_BINDERFS=n` ушло в план этапа 4: фрагмент из kernel/ пополняет defconfig pmOS, а не заменяет его.
 
 `scripts/pack-device-bundle.sh` собирает бандл для SD-карты: boot-каталог (Image, DTB, extlinux.conf с `init=/sbin/liinit`), u-boot-sunxi-with-spl и `rootfs.ext4`, где busybox, наши бинари, `/etc/afflictio` и модули упакованы `mke2fs -d` в ext4 без root. Собранный образ проверяется `debugfs` изнутри: читаются бинари и конфиг сессий. Все три шага выполняются в CI в job `device`; прошивка на железо остается за сессией bring-up (рецепт в devices/pinephone/README.md).
 
@@ -74,9 +75,15 @@ HAL намеренно не тянет готовые библиотеки др�
 
 Монтирование binderfs конфигурируется в init.toml через `[[mounts]]` (новая секция liinit: source, target, fstype; неудача монтирования логируется и не прерывает загрузку). Утилита `binderctl probe` создает узел через `binder-control` или открывает легаси `/dev/binder`, печатает версию протокола. Ядро `linux-virt` в QEMU без Binder, поэтому smoke печатает информационный маркер `SMOKE_BINDERFS_ABSENT` и не считает это ошибкой; на pmOS-ядре PinePhone `BINDER_IPC=y`, для `BINDERFS` нужен наш фрагмент конфигурации. Числовые коды команд и ioctl закреплены тестами против эталонных значений (например, `BINDER_WRITE_READ = 0xC0306201`), парцелл и офсеты проверены roundtrip-тестами.
 
+## Модем
+
+AT-слой лежит в крейте `lioat` без внешних зависимостей кроме libc и serde. Канал `AtChannel` открывает последовательное устройство с `O_NONBLOCK|O_NOCTTY`, переводит его в raw-режим через termios (B115200, CLOCAL|CREAD) и ведет диалог на poll с дедлайном: команда уходит кадром с `\r`, ответ собирается построчно до финального `OK`/`ERROR`/`+CME ERROR`, эхо снимается, а незавершенные строки остаются в буфере канала между вызовами — ответы соседних команд и URC не теряются при склеивании в одном read. Поверх канала работает probe по стандарту 27.007: `ATE0`, `AT+CGMI`, `AT+CGMM`, `AT+CPIN?`, `AT+CSQ`, `AT+CREG?`; результаты (производитель, модель, READY/SIM PIN/SIM PUK, уровень сигнала с переводом в dBm, регистрация) складываются в снимок `ModemState`.
+
+Демон `lioatd` читает `/etc/afflictio/lioat.toml`, открывает первый доступный порт из списка `devices` (на PinePhone `/dev/ttyUSB2` за драйвером option, в QEMU второй PL011 `/dev/ttyAMA1`), перепрашивает модем раз в `probe_interval` и владеет unix-сокетом `/run/afflictio/modem.sock`: `modemctl status` возвращает JSON-снимок, `modemctl at CMD` прокидывает произвольную команду в канал. Протокол закреплен тестами на круг кодирования; при потере устройства демон закрывает канал и уходит в ожидание, поэтому исчезновение модема не рвет загрузку и не убивает службу. Первый успешный probe печатает маркер `SMOKE_MODEM_AT_OK path=... manufacturer=... model=... pin=... rssi=...`; в QEMU его ловит `scripts/qemu-rootfs-smoke.sh`, а реальный модем заменяет заглушка `scripts/modem-emu.py`.
+
 ## Rootfs и образ устройства
 
-Этап дистрибутива собран тремя скриптами. `scripts/build-rootfs.sh` собирает rootfs: alpine minirootfs как база, пакеты Afflictio (liinit в /sbin/init, tiosessd, tioctl, tiocompd, binderctl, probe.sh), пользователи root и mel0k1 (uid 1000, пароли залочены, автологин через tiosessd с реальным setuid по getpwnam), два дерева модулей (6.12.118-0-virt для QEMU и 6.17.5 для PinePhone), init.toml с секциями `[[modules]]`, `[[mounts]]` и службами, /boot с Image и DTB, /extlinux/extlinux.conf с root=UUID, манифест /etc/afflictio/manifest.json и ext4 с фиксированным UUID. Права /home/mel0k1 выставляются через debugfs sif после mke2fs -d, потому что mke2fs не умеет менять владельцев.
+Этап дистрибутива собран тремя скриптами. `scripts/build-rootfs.sh` собирает rootfs: alpine minirootfs как база, пакеты Afflictio (liinit в /sbin/init, tiosessd, tioctl, tiocompd, binderctl, lioatd, modemctl, probe.sh), пользователи root и mel0k1 (uid 1000, пароли залочены, автологин через tiosessd с реальным setuid по getpwnam), два дерева модулей (6.12.118-0-virt для QEMU и 6.17.5 для PinePhone), init.toml с секциями `[[modules]]`, `[[mounts]]` и службами, lioat.toml со списком модемных портов, /boot с Image и DTB, /extlinux/extlinux.conf с root=UUID, манифест /etc/afflictio/manifest.json и ext4 с фиксированным UUID. Права /home/mel0k1 выставляются через debugfs sif после mke2fs -d, потому что mke2fs не умеет менять владельцев.
 
 Модули обоих деревьев распаковываются на этапе сборки (gzip и zstd): ядра собраны без CONFIG_MODULE_DECOMPRESS, а busybox modprobe в этой конфигурации передает в ядро сырые байты, что ловится сообщением Invalid ELF header magic. После распаковки переписываются modules.dep и modules.alias, .bin-таблицы удаляются. У liinit появилась секция `[[modules]]`: после монтирований он запускает modprobe по абсолютному пути (/sbin/modprobe, если есть), и ошибки загрузки логируются, не прерывая загрузку; без PATH у PID 1 это единственный надежный способ.
 
