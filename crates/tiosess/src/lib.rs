@@ -134,6 +134,7 @@ impl SessionManager {
             .open(format!("/dev/tty{vt}"))?;
         let tty_fd = tty.as_raw_fd();
         let mut cmd = Command::new(&command[0]);
+        let user_for_lookup = user.clone();
         cmd.args(&command[1..])
             .stdin(tty.try_clone()?)
             .stdout(tty.try_clone()?)
@@ -145,6 +146,14 @@ impl SessionManager {
                 }
                 if libc::ioctl(tty_fd, TIOCSCTTY_REQ, 0) < 0 {
                     return Err(io::Error::last_os_error());
+                }
+                if let Some((gid, uid)) = lookup_user(&user_for_lookup) {
+                    if libc::setgid(gid) < 0 {
+                        return Err(io::Error::last_os_error());
+                    }
+                    if libc::setuid(uid) < 0 {
+                        return Err(io::Error::last_os_error());
+                    }
                 }
                 Ok(())
             });
@@ -196,6 +205,18 @@ impl SessionManager {
     }
 }
 
+fn lookup_user(name: &str) -> Option<(u32, u32)> {
+    let cname = std::ffi::CString::new(name).ok()?;
+    let passwd = unsafe { libc::getpwnam(cname.as_ptr()) };
+    if passwd.is_null() {
+        return None;
+    }
+    unsafe {
+        let pw = &*passwd;
+        Some((pw.pw_gid, pw.pw_uid))
+    }
+}
+
 pub fn dispatch(manager: &mut SessionManager, req: Request) -> Response {
     match req {
         Request::Status => {
@@ -227,6 +248,22 @@ pub fn dispatch(manager: &mut SessionManager, req: Request) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lookup_root_resolves_ids() {
+        let ids = lookup_user("root");
+        assert_eq!(ids, Some((0, 0)));
+    }
+
+    #[test]
+    fn lookup_unknown_user_is_none() {
+        assert_eq!(lookup_user("no-such-user-afflictio"), None);
+    }
+
+    #[test]
+    fn lookup_interior_nul_is_none() {
+        assert_eq!(lookup_user("bad\0user"), None);
+    }
 
     #[test]
     fn empty_config_gets_defaults() {

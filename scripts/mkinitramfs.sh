@@ -32,6 +32,15 @@ install -m 0755 kernel/initramfs/init "${ROOT}/init"
 install -m 0755 kernel/initramfs/probe.sh "${ROOT}/bin/probe.sh"
 install -m 0644 kernel/initramfs/init.toml "${ROOT}/etc/afflictio/init.toml"
 install -m 0644 kernel/initramfs/session.toml "${ROOT}/etc/afflictio/session.toml"
+
+cat >> "${ROOT}/etc/passwd" <<'EOF'
+mel0k1:x:1000:1000:Afflictio user:/home/mel0k1:/bin/sh
+EOF
+cat >> "${ROOT}/etc/group" <<'EOF'
+mel0k1:x:1000:
+EOF
+mkdir -p "${ROOT}/home/mel0k1"
+
 cp -r "${OUT_DIR}/kernel/lib/modules" "${ROOT}/lib/"
 
 cd "${ROOT}"

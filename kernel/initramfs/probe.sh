@@ -72,6 +72,26 @@ else
 fi
 
 n=0
+while [ $n -lt 15 ]; do
+  if [ -f /tmp/afflictio-uid.vt1 ] && [ -f /tmp/afflictio-uid.vt2 ]; then
+    break
+  fi
+  sleep 1
+  n=$((n+1))
+done
+if [ -f /tmp/afflictio-uid.vt1 ]; then
+  uid1=$(cat /tmp/afflictio-uid.vt1)
+  uid2=$(cat /tmp/afflictio-uid.vt2 2>/dev/null)
+  if [ "${uid1}" = "1000" ] && [ "${uid2}" = "1000" ]; then
+    echo SMOKE_UID_OK
+  else
+    echo SMOKE_FAIL_UID ${uid1}/${uid2}
+    kill -TERM 1
+    exit 1
+  fi
+fi
+
+n=0
 kms_ok=0
 while [ $n -lt 60 ]; do
   if [ -f /run/afflictio/tocomp.json ]; then

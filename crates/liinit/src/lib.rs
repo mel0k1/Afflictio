@@ -25,9 +25,16 @@ pub struct MountSpec {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct ModuleSpec {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct InitConfig {
     #[serde(default)]
     pub mounts: Vec<MountSpec>,
+    #[serde(default)]
+    pub modules: Vec<ModuleSpec>,
     #[serde(default)]
     pub services: Vec<ServiceSpec>,
 }
@@ -162,6 +169,35 @@ pub fn apply_mounts(mounts: &[MountSpec]) {
     }
 }
 
+fn select_modprobe(sbin_exists: bool, bin_exists: bool) -> &'static str {
+    if sbin_exists {
+        "/sbin/modprobe"
+    } else if bin_exists {
+        "/bin/modprobe"
+    } else {
+        "modprobe"
+    }
+}
+
+pub fn load_modules(modules: &[ModuleSpec]) {
+    let path = select_modprobe(
+        fs::metadata("/sbin/modprobe").is_ok(),
+        fs::metadata("/bin/modprobe").is_ok(),
+    );
+    for spec in modules {
+        match Command::new(path).arg(&spec.name).status() {
+            Ok(status) if status.success() => {
+                eprintln!("liinit: module {} loaded", spec.name)
+            }
+            Ok(status) => eprintln!(
+                "liinit: module {} skipped: modprobe exited with {status}",
+                spec.name
+            ),
+            Err(e) => eprintln!("liinit: module {} skipped: {e}", spec.name),
+        }
+    }
+}
+
 pub fn run(config_path: &str) -> io::Result<()> {
     if unsafe { libc::getpid() } == 1 {
         bootstrap_mounts();
@@ -170,6 +206,7 @@ pub fn run(config_path: &str) -> io::Result<()> {
     let config = if raw.trim().is_empty() {
         InitConfig {
             mounts: Vec::new(),
+            modules: Vec::new(),
             services: Vec::new(),
         }
     } else {
@@ -177,6 +214,7 @@ pub fn run(config_path: &str) -> io::Result<()> {
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?
     };
     apply_mounts(&config.mounts);
+    load_modules(&config.modules);
     let mut supervisor = Supervisor::new(config);
     supervisor.start()?;
     let mut signals = Signals::new([SIGCHLD, SIGTERM, SIGINT]).map_err(io::Error::other)?;
@@ -237,6 +275,28 @@ argv = ["/bin/true"]
         let config = InitConfig::parse("").unwrap();
         assert!(config.services.is_empty());
         assert!(config.mounts.is_empty());
+        assert!(config.modules.is_empty());
+    }
+
+    #[test]
+    fn picks_modprobe_path() {
+        assert_eq!(select_modprobe(true, true), "/sbin/modprobe");
+        assert_eq!(select_modprobe(false, true), "/bin/modprobe");
+        assert_eq!(select_modprobe(false, false), "modprobe");
+    }
+
+    #[test]
+    fn parses_module_list() {
+        let raw = r#"
+[[modules]]
+name = "virtio_gpu"
+
+[[modules]]
+name = "evdev"
+"#;
+        let config = InitConfig::parse(raw).unwrap();
+        let names: Vec<&str> = config.modules.iter().map(|m| m.name.as_str()).collect();
+        assert_eq!(names, ["virtio_gpu", "evdev"]);
     }
 
     #[test]
@@ -254,6 +314,7 @@ argv = ["/bin/true"]
     fn starts_and_counts_children() {
         let config = InitConfig {
             mounts: Vec::new(),
+            modules: Vec::new(),
             services: vec![ServiceSpec {
                 name: String::from("sleeper"),
                 argv: vec![String::from("sleep"), String::from("30")],
@@ -271,6 +332,7 @@ argv = ["/bin/true"]
     fn rejects_empty_argv() {
         let config = InitConfig {
             mounts: Vec::new(),
+            modules: Vec::new(),
             services: vec![ServiceSpec {
                 name: String::from("broken"),
                 argv: Vec::new(),
