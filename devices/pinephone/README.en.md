@@ -48,7 +48,9 @@ The image became three-partition: p1 is boot (Image, DTBs for three revisions, e
 - `liota switch` — mounts the boot partition, rewrites the `default` in extlinux.conf to the inactive slot (a write to a temporary file plus rename), unmounts;
 - `liota install PAYLOAD` — writes the payload byte by byte into the inactive slot's partition with fsync; after an install an explicit `liota switch` and a reboot are needed.
 
-liinit writes `/var/lib/afflictio/boot-ok` after the services start, so a slot confirms its own boot. In QEMU the whole cycle is verified with two boots: on slot a `status` confirms the slot map, `switch` rewrites extlinux.conf, the second boot lands on slot b and records `SMOKE_AB_BOOT_B_OK`. Rollback is a reverse `liota switch`. Delivering the update package over the network (and signing it) stays for the next stage.
+liinit writes `/var/lib/afflictio/boot-ok` after the services start, so a slot confirms its own boot. In QEMU the whole cycle is verified with two boots: on slot a `status` confirms the slot map, `switch` rewrites extlinux.conf, the second boot lands on slot b and records `SMOKE_AB_BOOT_B_OK`. Rollback is a reverse `liota switch`. 
+
+The update payload is signed. The AFFUPD1 format: a magic line, a JSON manifest (version, size, image sha256), an ed25519 signature over the manifest bytes, the image. The public key lives in the rootfs as `/etc/afflictio/updates.pub` (overridden through AFFLICTIO_UPDATE_PUB), the private key stays off the device: `scripts/build-rootfs.sh` generates a pair into `out/keys` at build time and puts the public key into the image, `liota sign KEY IMAGE UPDATE` assembles a signed payload, and `liota verify PAYLOAD` plus `liota install PAYLOAD` check the signature, size and hash streaming before writing anything. In the smoke the cycle runs on two extra virtio disks: the signed payload is accepted (`SMOKE_AB_SIGN_OK`), the tampered one is rejected (`SMOKE_AB_SIGN_REJECT`). Delivering the package over the network stays for bring-up.
 
 ## SD-card image
 
