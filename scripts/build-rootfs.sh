@@ -3,6 +3,7 @@ set -eu
 
 : "${OUT_DIR:=out}"
 : "${ROOTFS_UUID:=aff1a001-0505-4a0b-95c1-1a2b3c4d5e6f}"
+: "${ROOTFS_UUID_B:=aff1a002-0505-4a0b-95c1-1a2b3c4d5e6f}"
 MINIROOTFS_URL="${MINIROOTFS_URL:-https://dl-cdn.alpinelinux.org/alpine/v3.22/releases/aarch64/alpine-minirootfs-3.22.8-aarch64.tar.gz}"
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -35,12 +36,14 @@ install -m 0755 "${BIN_DIR}/tiocompd" "${ROOT}/bin/tiocompd"
 install -m 0755 "${BIN_DIR}/binderctl" "${ROOT}/bin/binderctl"
 install -m 0755 "${BIN_DIR}/lioatd" "${ROOT}/bin/lioatd"
 install -m 0755 "${BIN_DIR}/modemctl" "${ROOT}/bin/modemctl"
+install -m 0755 "${BIN_DIR}/liota" "${ROOT}/bin/liota"
 install -m 0755 kernel/initramfs/probe.sh "${ROOT}/bin/probe.sh"
 
-mkdir -p "${ROOT}/etc/afflictio"
+mkdir -p "${ROOT}/etc/afflictio" "${ROOT}/boot"
 install -m 0644 devices/pinephone/etc/init.toml "${ROOT}/etc/afflictio/init.toml"
 install -m 0644 devices/pinephone/etc/session.toml "${ROOT}/etc/afflictio/session.toml"
 install -m 0644 devices/pinephone/etc/lioat.toml "${ROOT}/etc/afflictio/lioat.toml"
+install -m 0644 devices/pinephone/etc/slots.toml "${ROOT}/etc/afflictio/slots.toml"
 
 cat > "${ROOT}/etc/passwd" <<'EOF'
 root:x:0:0:root:/root:/bin/sh
@@ -76,13 +79,6 @@ for modroot in "${ROOT}"/lib/modules/*/; do
   find "${modroot}" -name "*.bin" -delete
 done
 
-mkdir -p "${ROOT}/boot" "${ROOT}/extlinux"
-cp "${OUT_DIR}/device/pinephone/boot/Image" "${ROOT}/boot/"
-cp "${OUT_DIR}/device/pinephone/boot/"sun50i-a64-pinephone-1.1.dtb \
-   "${OUT_DIR}/device/pinephone/boot/"sun50i-a64-pinephone-1.2.dtb \
-   "${OUT_DIR}/device/pinephone/boot/"sun50i-a64-pinephone-1.2b.dtb "${ROOT}/boot/"
-install -m 0644 devices/pinephone/extlinux.conf "${ROOT}/extlinux/extlinux.conf"
-
 version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
 python3 - "${ROOT}/etc/afflictio/manifest.json" "${version}" "${ROOTFS_UUID}" <<'PYEOF'
 import json
@@ -100,6 +96,7 @@ manifest = {
         "/bin/binderctl",
         "/bin/lioatd",
         "/bin/modemctl",
+        "/bin/liota",
         "/bin/probe.sh",
     ],
     "users": ["root", "mel0k1"],
@@ -117,11 +114,12 @@ printf 'sif /home/mel0k1 uid 1000\nsif /home/mel0k1 gid 1000\nquit\n' > "${OUT_D
 debugfs -w -f "${OUT_DIR}/rootfs-fixowner.cmds" "${OUT_DIR}/rootfs.ext4" > /dev/null 2>&1
 rm -f "${OUT_DIR}/rootfs-fixowner.cmds"
 
-binaries="$(debugfs -R "ls /bin" "${OUT_DIR}/rootfs.ext4" 2>/dev/null | grep -oE "tiosessd|tioctl|tiocompd|binderctl|probe.sh|lioatd|modemctl" | sort -u | wc -l)"
+binaries="$(debugfs -R "ls /bin" "${OUT_DIR}/rootfs.ext4" 2>/dev/null | grep -oE "tiosessd|tioctl|tiocompd|binderctl|probe.sh|lioatd|modemctl|liota" | sort -u | wc -l)"
 uid_entry="$(debugfs -R "cat /etc/passwd" "${OUT_DIR}/rootfs.ext4" 2>/dev/null | grep -c "mel0k1:x:1000")"
 manifest="$(debugfs -R "cat /etc/afflictio/manifest.json" "${OUT_DIR}/rootfs.ext4" 2>/dev/null | grep -c "\"version\"")"
-if [ "${binaries}" -lt 7 ] || [ "${uid_entry}" -lt 1 ] || [ "${manifest}" -lt 1 ]; then
-  echo "rootfs.ext4 check failed: binaries ${binaries}/7, passwd ${uid_entry}, manifest ${manifest}"
+slots="$(debugfs -R "cat /etc/afflictio/slots.toml" "${OUT_DIR}/rootfs.ext4" 2>/dev/null | grep -c "\[\[slots\]\]")"
+if [ "${binaries}" -lt 8 ] || [ "${uid_entry}" -lt 1 ] || [ "${manifest}" -lt 1 ] || [ "${slots}" -lt 2 ]; then
+  echo "rootfs.ext4 check failed: binaries ${binaries}/8, passwd ${uid_entry}, manifest ${manifest}, slots ${slots}/2"
   exit 1
 fi
 for tree in "${ROOT}"/lib/modules/*/modules.dep; do
@@ -138,4 +136,4 @@ fi
 
 files=$(find "${ROOT}" -type f | wc -l)
 echo "rootfs ready: ${OUT_DIR}/rootfs.ext4 (uuid ${ROOTFS_UUID})"
-echo "  binaries: ${binaries}/7, passwd mel0k1: ${uid_entry}, manifest: ${manifest}, tree files: ${files}"
+echo "  binaries: ${binaries}/8, passwd mel0k1: ${uid_entry}, manifest: ${manifest}, slots: ${slots}/2, tree files: ${files}"

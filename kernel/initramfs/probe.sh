@@ -5,6 +5,45 @@ active_vt() {
   /bin/tioctl status 2>/dev/null | grep -o '"active_vt": *[0-9]*' | sed 's/.*: *//'
 }
 
+uuid_for() {
+  awk -v n="$1" '
+    /^[[:space:]]*name[[:space:]]*=/ { split($0, a, "\""); m = (a[2] == n) }
+    m && /^[[:space:]]*uuid[[:space:]]*=/ { split($0, b, "\""); print b[2]; exit }
+  ' /etc/afflictio/slots.toml
+}
+
+if grep -q 'afflictio.abtest=1' /proc/cmdline; then
+  uuid_b=$(uuid_for b)
+  active=$(grep -o 'root=UUID=[0-9a-fA-F-]*' /proc/cmdline | sed 's/root=UUID=//')
+  if [ "${active}" = "${uuid_b}" ]; then
+    n=0
+    boot_ok=0
+    while [ $n -lt 30 ]; do
+      if [ -f /var/lib/afflictio/boot-ok ]; then
+        boot_ok=1
+        break
+      fi
+      sleep 1
+      n=$((n+1))
+    done
+    if [ "${boot_ok}" != "1" ]; then
+      echo SMOKE_AB_BOOT_OK_MISSING
+      kill -TERM 1
+      exit 1
+    fi
+    out=$(/bin/liota status) || { echo SMOKE_AB_BOOT_B_FAIL; kill -TERM 1; exit 1; }
+    echo "${out}"
+    if ! printf '%s\n' "${out}" | grep -q '"active":"b"'; then
+      echo SMOKE_AB_BOOT_B_FAIL
+      kill -TERM 1
+      exit 1
+    fi
+    echo SMOKE_AB_BOOT_B_OK
+    kill -TERM 1
+    exit 0
+  fi
+fi
+
 n=0
 ready=0
 while [ $n -lt 90 ]; do
@@ -128,5 +167,42 @@ if ! /bin/tioctl status 2>/dev/null | grep -q active_vt; then
   kill -TERM 1
   exit 1
 fi
+
+if ! grep -q 'afflictio.abtest=1' /proc/cmdline; then
+  kill -TERM 1
+  exit 0
+fi
+
+uuid_a=$(uuid_for a)
+active=$(grep -o 'root=UUID=[0-9a-fA-F-]*' /proc/cmdline | sed 's/root=UUID=//')
+if [ "${active}" != "${uuid_a}" ]; then
+  echo SMOKE_AB_UNKNOWN_SLOT ${active}
+  kill -TERM 1
+  exit 1
+fi
+out=$(/bin/liota status) || { echo SMOKE_AB_STATUS_FAIL; kill -TERM 1; exit 1; }
+echo "${out}"
+if ! printf '%s\n' "${out}" | grep -q '"active":"a"'; then
+  echo SMOKE_AB_STATUS_FAIL
+  kill -TERM 1
+  exit 1
+fi
+if ! printf '%s\n' "${out}" | grep -q '"inactive":"b"'; then
+  echo SMOKE_AB_STATUS_FAIL
+  kill -TERM 1
+  exit 1
+fi
+if ! printf '%s\n' "${out}" | grep -q '"boot_ok":true'; then
+  echo SMOKE_AB_STATUS_FAIL
+  kill -TERM 1
+  exit 1
+fi
+echo SMOKE_AB_STATUS_OK
+if ! /bin/liota switch; then
+  echo SMOKE_AB_SWITCH_FAIL
+  kill -TERM 1
+  exit 1
+fi
+echo SMOKE_AB_SWITCH_OK
 kill -TERM 1
 exit 0

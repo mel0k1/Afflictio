@@ -1,0 +1,12 @@
+disk = "/dev/mmcblk0"
+boot_partition = 1
+
+[[slots]]
+name = "a"
+partition = 2
+uuid = "aff1a001-0505-4a0b-95c1-1a2b3c4d5e6f"
+
+[[slots]]
+name = "b"
+partition = 3
+uuid = "aff1a002-0505-4a0b-95c1-1a2b3c4d5e6f"
