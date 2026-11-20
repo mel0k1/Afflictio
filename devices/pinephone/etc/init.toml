@@ -1,3 +1,15 @@
+[[modules]]
+name = "evdev"
+
+[[modules]]
+name = "virtio_gpu"
+
+[[modules]]
+name = "virtio_input"
+
+[[modules]]
+name = "sun4i_drm"
+
 [[mounts]]
 source = "binder"
 target = "/dev/binderfs"
@@ -7,3 +19,13 @@ fstype = "binder"
 name = "tiosessd"
 argv = ["/bin/tiosessd"]
 respawn = true
+
+[[services]]
+name = "tiocompd"
+argv = ["/bin/tiocompd"]
+respawn = false
+
+[[services]]
+name = "probe"
+argv = ["/bin/probe.sh"]
+respawn = false

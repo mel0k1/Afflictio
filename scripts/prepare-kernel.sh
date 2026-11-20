@@ -32,17 +32,11 @@ fi
 printf '%s\n' "${ver}" > "${OUT_DIR}/kernel/modules.version"
 
 MODROOT="${OUT_DIR}/kernel/lib/modules/${ver}"
-if [ ! -f "${MODROOT}/kernel/drivers/input/evdev.ko.gz" ]; then
+if [ ! -f "${MODROOT}/kernel/drivers/input/evdev.ko.gz" ] || [ ! -f "${MODROOT}/kernel/fs/ext4/ext4.ko.gz" ]; then
   rm -rf "${MODROOT}"
-  tar -xzf "${APK}" -C "${OUT_DIR}/kernel" \
-    "lib/modules/${ver}/modules.dep" \
-    "lib/modules/${ver}/kernel/drivers/gpu" \
-    "lib/modules/${ver}/kernel/drivers/virtio" \
-    "lib/modules/${ver}/kernel/drivers/video" \
-    "lib/modules/${ver}/kernel/drivers/i2c" \
-    "lib/modules/${ver}/kernel/drivers/input" 2>/dev/null || true
+  tar -xzf "${APK}" -C "${OUT_DIR}/kernel" "lib/modules/${ver}" 2>/dev/null || true
 fi
-if [ ! -f "${MODROOT}/modules.dep" ] || [ ! -f "${MODROOT}/kernel/drivers/input/evdev.ko.gz" ]; then
+if [ ! -f "${MODROOT}/modules.dep" ] || [ ! -f "${MODROOT}/kernel/drivers/input/evdev.ko.gz" ] || [ ! -f "${MODROOT}/kernel/drivers/block/virtio_blk.ko.gz" ] || [ ! -f "${MODROOT}/kernel/fs/ext4/ext4.ko.gz" ]; then
   echo "module extraction failed"
   exit 1
 fi

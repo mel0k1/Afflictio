@@ -1,0 +1,7 @@
+[[autologin]]
+user = "mel0k1"
+command = ["/bin/sh", "-c", "id -u > /tmp/afflictio-uid.vt1; echo 1111111111; echo 1111111111; echo 1111111111; echo 1111111111; echo 1111111111; echo 1111111111; echo 1111111111; echo 1111111111; exec /bin/sh"]
+
+[[autologin]]
+user = "mel0k1"
+command = ["/bin/sh", "-c", "id -u > /tmp/afflictio-uid.vt2; echo 2222222222; echo 2222222222; echo 2222222222; echo 2222222222; echo 2222222222; echo 2222222222; echo 2222222222; echo 2222222222; exec /bin/sh"]
