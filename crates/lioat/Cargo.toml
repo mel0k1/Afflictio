@@ -1,0 +1,21 @@
+[package]
+name = "lioat"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+lioipc = { path = "../lioipc" }
+libc = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+
+[[bin]]
+name = "lioatd"
+path = "src/main.rs"
+
+[[bin]]
+name = "modemctl"
+path = "src/bin/modemctl.rs"
