@@ -16,6 +16,11 @@ target = "/dev/binderfs"
 fstype = "binder"
 
 [[services]]
+name = "lioatd"
+argv = ["/bin/lioatd"]
+respawn = true
+
+[[services]]
 name = "tiosessd"
 argv = ["/bin/tiosessd"]
 respawn = true

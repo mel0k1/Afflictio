@@ -1,0 +1,4 @@
+devices = ["/dev/ttyUSB2", "/dev/ttyAMA1"]
+socket = "/run/afflictio/modem.sock"
+probe_interval = 5
+response_timeout = 2000

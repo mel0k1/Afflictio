@@ -33,11 +33,14 @@ install -m 0755 "${BIN_DIR}/tiosessd" "${ROOT}/bin/tiosessd"
 install -m 0755 "${BIN_DIR}/tioctl" "${ROOT}/bin/tioctl"
 install -m 0755 "${BIN_DIR}/tiocompd" "${ROOT}/bin/tiocompd"
 install -m 0755 "${BIN_DIR}/binderctl" "${ROOT}/bin/binderctl"
+install -m 0755 "${BIN_DIR}/lioatd" "${ROOT}/bin/lioatd"
+install -m 0755 "${BIN_DIR}/modemctl" "${ROOT}/bin/modemctl"
 install -m 0755 kernel/initramfs/probe.sh "${ROOT}/bin/probe.sh"
 
 mkdir -p "${ROOT}/etc/afflictio"
 install -m 0644 devices/pinephone/etc/init.toml "${ROOT}/etc/afflictio/init.toml"
 install -m 0644 devices/pinephone/etc/session.toml "${ROOT}/etc/afflictio/session.toml"
+install -m 0644 devices/pinephone/etc/lioat.toml "${ROOT}/etc/afflictio/lioat.toml"
 
 cat > "${ROOT}/etc/passwd" <<'EOF'
 root:x:0:0:root:/root:/bin/sh
@@ -95,6 +98,8 @@ manifest = {
         "/bin/tioctl",
         "/bin/tiocompd",
         "/bin/binderctl",
+        "/bin/lioatd",
+        "/bin/modemctl",
         "/bin/probe.sh",
     ],
     "users": ["root", "mel0k1"],
@@ -112,11 +117,11 @@ printf 'sif /home/mel0k1 uid 1000\nsif /home/mel0k1 gid 1000\nquit\n' > "${OUT_D
 debugfs -w -f "${OUT_DIR}/rootfs-fixowner.cmds" "${OUT_DIR}/rootfs.ext4" > /dev/null 2>&1
 rm -f "${OUT_DIR}/rootfs-fixowner.cmds"
 
-binaries="$(debugfs -R "ls /bin" "${OUT_DIR}/rootfs.ext4" 2>/dev/null | grep -oE "tiosessd|tioctl|tiocompd|binderctl|probe.sh" | sort -u | wc -l)"
+binaries="$(debugfs -R "ls /bin" "${OUT_DIR}/rootfs.ext4" 2>/dev/null | grep -oE "tiosessd|tioctl|tiocompd|binderctl|probe.sh|lioatd|modemctl" | sort -u | wc -l)"
 uid_entry="$(debugfs -R "cat /etc/passwd" "${OUT_DIR}/rootfs.ext4" 2>/dev/null | grep -c "mel0k1:x:1000")"
 manifest="$(debugfs -R "cat /etc/afflictio/manifest.json" "${OUT_DIR}/rootfs.ext4" 2>/dev/null | grep -c "\"version\"")"
-if [ "${binaries}" -lt 5 ] || [ "${uid_entry}" -lt 1 ] || [ "${manifest}" -lt 1 ]; then
-  echo "rootfs.ext4 check failed: binaries ${binaries}/5, passwd ${uid_entry}, manifest ${manifest}"
+if [ "${binaries}" -lt 7 ] || [ "${uid_entry}" -lt 1 ] || [ "${manifest}" -lt 1 ]; then
+  echo "rootfs.ext4 check failed: binaries ${binaries}/7, passwd ${uid_entry}, manifest ${manifest}"
   exit 1
 fi
 for tree in "${ROOT}"/lib/modules/*/modules.dep; do
@@ -133,4 +138,4 @@ fi
 
 files=$(find "${ROOT}" -type f | wc -l)
 echo "rootfs ready: ${OUT_DIR}/rootfs.ext4 (uuid ${ROOTFS_UUID})"
-echo "  binaries: ${binaries}/5, passwd mel0k1: ${uid_entry}, manifest: ${manifest}, tree files: ${files}"
+echo "  binaries: ${binaries}/7, passwd mel0k1: ${uid_entry}, manifest: ${manifest}, tree files: ${files}"
