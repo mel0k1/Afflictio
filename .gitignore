@@ -3,3 +3,4 @@
 *.img
 *.tar.xz
 *.zip
+scripts/__pycache__/

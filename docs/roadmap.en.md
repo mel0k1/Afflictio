@@ -2,7 +2,7 @@
 
 ## Where the project is
 
-Stages 1-4 are done (tags v0.1.0, v0.2.0, v0.3.0, v0.4.0). The skeleton boots in QEMU on ARM64 with one script, `scripts/qemu-smoke.sh`, and the same scenario runs in CI: liinit mounts the filesystems and starts services, tiosessd brings up two autologin sessions on VT1 and VT2, the keyboard switches consoles through the HAL with Ctrl+Alt+Fn, session text really lands on the framebuffer through virtio-gpu, the supervisor restarts a killed daemon, and SIGTERM ends in a clean poweroff. The first device target is chosen (PinePhone), the pmOS artifact pipeline is verified in CI in the `device` job, the compositor draws windows on top of KMS in QEMU, and the Binder transport layer is covered by tests. There is still a long way to an installable phone distribution, and it is more honest to name the steps that separate the skeleton from a working system.
+Stages 1-5 are done (tags v0.1.0 through v0.5.0). The skeleton boots in QEMU on ARM64 with one script, `scripts/qemu-smoke.sh`, and the same scenario runs in CI: liinit mounts the filesystems and starts services, tiosessd brings up two autologin sessions on VT1 and VT2, the keyboard switches consoles through the HAL with Ctrl+Alt+Fn, session text really lands on the framebuffer through virtio-gpu, the supervisor restarts a killed daemon, and SIGTERM ends in a clean poweroff. The first device target is chosen (PinePhone): the pmOS artifact pipeline, the distribution rootfs with users and a manifest, flashable images with verification and the rootfs boot in QEMU run in CI in the `device` and `rootfs` jobs; the compositor draws windows on top of KMS in both scenarios, and the Binder transport layer is covered by tests. What remains is the bring-up session to an installable phone distribution, and it is more honest to name the steps that separate the skeleton from a working system.
 
 ## Stage 1. Skeleton check in QEMU (done, v0.1.0)
 
@@ -27,5 +27,6 @@ Rootfs build scripts (a minimal busybox and coreutils set, Afflictio userspace p
 ## Open questions
 
 - The first device choice is settled (PinePhone); when the target list grows, the comparison starts with the OnePlus 6, which has a mainline qcom-sdm845 kernel and wide pmOS support.
-- A minimal compositor exists and is verified in QEMU; whether to grow it into a full one (input, application buffers) or take a ready one (weston, sway, labwc) will be decided once session output and the first real-device experience arrive.
+- A minimal compositor exists and is verified in QEMU (and inside the rootfs distribution); whether to grow it into a full one (input, application buffers) or take a ready one (weston, sway, labwc) will be decided at hardware bring-up.
+- The PinePhone modem: eg25-manager in pmOS drives AT commands over USB-serial; the AT layer joins bring-up together with the qmi set, and the liobinder Binder path stays for vendor-RIL devices like the OnePlus 6.
 - The update model (A/B partitions versus full-ota) is chosen during stage 5.

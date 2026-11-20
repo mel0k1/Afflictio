@@ -1,6 +1,6 @@
 # PinePhone: the first Afflictio target
 
-PinePhone (PINE64, Allwinner A64) is the first device for roadmap stage 3. Rationale: a mainline kernel with strong postmarketOS support (the `linux-postmarketos-allwinner` package, 431 modules), mainline U-Boot boot, booting from microSD without touching the internal flash, and a cheap, common dev device. Until stage 5 (the distribution) no image is flashed to hardware, but the whole artifact pipeline is verified in CI in the `device` job.
+PinePhone (PINE64, Allwinner A64) is the first device for roadmap stage 3. Rationale: a mainline kernel with strong postmarketOS support (the `linux-postmarketos-allwinner` package, 431 modules), mainline U-Boot boot, booting from microSD without touching the internal flash, and a cheap, common dev device. The artifact pipeline and the distribution build are verified in CI in the `device` job; flashing to hardware stays for the bring-up session.
 
 ## Artifacts from the postmarketOS pipeline
 
@@ -15,48 +15,63 @@ The kernel config is not published as a separate file, but the pmOS kernel build
 
 ## Compatibility check
 
-`scripts/check-kernel-config.sh` compares `kernel/device-requirements.txt` against the extracted config: 16 requirements, 10 mandatory and 6 preferred. Against the pmOS v25.12 kernel every mandatory one holds (devtmpfs, proc, sysfs, tmpfs, UNIX, ELF, **VT and framebuffer_console**, ext4, evdev), with one warning:
+`scripts/check-kernel-config.sh` compares `kernel/device-requirements.txt` against the extracted config: 16 requirements, 10 mandatory and 6 preferred. Against the pmOS v25.12 kernel every mandatory one holds (devtmpfs, proc, sysfs, tmpfs, UNIX, ELF, VT and framebuffer_console, ext4, evdev). The config also shows that `CONFIG_EXT4_FS=y`, `CONFIG_MMC_SUNXI=y`, `CONFIG_MMC_BLOCK=y` and `CONFIG_DRM_SUN4I=y` are built into the kernel, so the rootfs mounts without an initramfs and `init=/sbin/liinit` runs directly. One warning:
 
-- `CONFIG_ANDROID_BINDERFS=n` while `CONFIG_ANDROID_BINDER_IPC=y`: Binder is present, but the binderfs mount needs enabling in our config fragment at stage 4 (libgbinder). This is exactly the case named in the roadmap: the fragment in kernel/ becomes an addition to the pmOS defconfig, not a replacement.
+- `CONFIG_ANDROID_BINDERFS=n` while `CONFIG_ANDROID_BINDER_IPC=y`: Binder is present, but the binderfs mount gets enabled by our config fragment when the pmOS kernel is rebuilt.
 
-pmOS kernel modules are zstd-compressed (`.ko.zst`): busybox modprobe cannot unpack them, so the hardware bring-up stage needs kmod or a recompressed module set. Recorded on the bring-up list.
+The pmOS kernel modules are zstd-compressed (`.ko.zst`) and the kernel is built without `CONFIG_MODULE_DECOMPRESS`: `scripts/build-rootfs.sh` unpacks both module trees (pmOS via `zstd`, virt via `gzip`) and rewrites `modules.dep`/`modules.alias` to the unpacked paths, so busybox modprobe works with ready-made `.ko` files.
 
-## The bundle
+## Rootfs
 
-`scripts/pack-device-bundle.sh` assembles `out/device/pinephone/bundle/`:
+`scripts/build-rootfs.sh` assembles the distribution rootfs (in CI in the `device` job):
+
+- base: alpine minirootfs aarch64 (busybox, musl, apk for extending on the device);
+- Afflictio packages: `liinit` as `/sbin/init`, `tiosessd`, `tioctl`, `tiocompd`, `binderctl`, `probe.sh`;
+- users: root and `mel0k1` (uid 1000, passwords locked, autologin through tiosessd with a real setuid);
+- both module trees: `6.12.118-0-virt` for QEMU and `6.17.5` for PinePhone;
+- `/etc/afflictio/init.toml` with `[[modules]]`, `[[mounts]]` (binderfs) and the tiosessd/tiocompd/probe services;
+- `/boot` with the Image and three DTBs, `/extlinux/extlinux.conf` with `root=UUID`;
+- `/etc/afflictio/manifest.json` with the version and package list;
+- `out/rootfs.ext4`: ext4 with a fixed UUID, `/home/mel0k1` gets uid 1000 through `debugfs sif`.
+
+The same rootfs boots in QEMU in the `rootfs` job (`scripts/qemu-rootfs-smoke.sh`): a mini-initramfs (`scripts/mkrootfs-initramfs.sh`) brings up `virtio_blk` and `ext4`, runs `switch_root` onto rootfs.ext4, and from there PID 1 is the real `liinit` from the rootfs. The scenario passes with the SMOKE_READY, SMOKE_SWITCH_VT1_OK, SMOKE_SWITCH_VT2_OK, SMOKE_FRAMES_DIFFER, SMOKE_UID_OK (proof that sessions run as uid 1000), SMOKE_KMS_FLIPS_OK (the compositor on virtio-gpu), SMOKE_RESPAWN_OK markers and a clean poweroff.
+
+## SD-card image
+
+`scripts/pack-device-bundle.sh` builds the bundle and three flashable images:
 
 ```
-bundle/
-  boot/
-    Image                     pmOS kernel
-    sun50i-a64-pinephone-1.2.dtb
-    extlinux/extlinux.conf    cmdline: root=/dev/mmcblk0p2 init=/sbin/liinit console=tty1+ttyS0
-  uboot/pine64-pinephone/     three u-boot-sunxi-with-spl variants
-  rootfs/                     directory prototype: busybox, liinit, tiosessd, tioctl, /etc/afflictio, /lib/modules/6.17.5
-  rootfs.ext4                 the same directory packed with mke2fs -d (512 MB ext4, label afflictio)
+out/device/pinephone/
+  bundle/
+    boot/                     Image, DTB 1.1/1.2/1.2b, extlinux/extlinux.conf
+    uboot/pine64-pinephone/   u-boot-sunxi-with-spl-{528,552,624}.bin
+    rootfs/                   the rootfs tree (the same one inside rootfs.ext4)
+    rootfs.ext4
+  afflictio-pinephone-528.img
+  afflictio-pinephone-552.img
+  afflictio-pinephone-624.img
 ```
 
-Integrity is verified inside the script with `debugfs`: binaries are read back from the image and session.toml with `[[autologin]]` is present. mke2fs and debugfs run without root, so the pipeline executes in CI.
+The three images differ only in the embedded u-boot variant: the numbers are the DRAM clock of the u-boot-sunxi-with-spl-{528,552,624}.bin builds; matching a variant to a board revision (1.0/1.1/1.2) is verified at bring-up. The three images differ only in the embedded u-boot variant: the numbers are the DRAM clock of the u-boot-sunxi-with-spl-{528,552,624}.bin builds; matching a variant to a board revision (1.0/1.1/1.2) is verified at bring-up. Each image: an MBR with one ext4 partition (type 0x83, LBA 2048), `u-boot-sunxi-with-spl` at offset 8192 bytes (sector 16, the sunxi standard), and the `rootfs.ext4` content from the partition start. Inside the partition sit the rootfs, `/boot` and `/extlinux/extlinux.conf`: u-boot reads ext4 directly, and `fdt` is not set in extlinux because each u-boot variant passes its own DTB matching the board revision (1.1, 1.2, 1.2b).
 
-## Booting (recipe for the hardware session)
+Image verification (`scripts/assemble-img.py verify` plus debugfs): the MBR signature, the `eGON.BT0` magic at offset 8192, the ext4 superblock at the partition start, binaries and passwd inside the partition, `/boot/Image`, extlinux with `root=UUID`, the manifest. mke2fs, debugfs and python work without root, so the pipeline runs in CI.
 
-Not verified on the device, executed manually during bring-up:
+## Flashing the SD card (recipe for the hardware session)
+
+Not verified on the device, done manually at bring-up:
 
 ```sh
-sfdisk /dev/sdX <<'EOF'
-label: dos
-start=1M, size=256M, type=83, bootable
-start=257M, type=83
-EOF
-mkfs.ext4 -L boot /dev/sdX1
-mkfs.ext4 -L afflictio /dev/sdX2
-dd if=uboot/pine64-pinephone/u-boot-sunxi-with-spl-528.bin of=/dev/sdX bs=1024 seek=8 conv=notrunc
-mount /dev/sdX1 /mnt/boot && cp -r bundle/boot/* /mnt/boot/
-dd if=bundle/rootfs.ext4 of=/dev/sdX2 bs=4M
+# figure out the SD device (last dmesg lines after insertion), then:
+sudo dd if=out/device/pinephone/afflictio-pinephone-624.img of=/dev/sdX bs=4M conv=fsync status=progress
+sync
 ```
 
-U-Boot boots `extlinux/extlinux.conf` from the first partition, the kernel mounts the rootfs with `/sbin/liinit` as PID 1, liinit starts tiosessd from the device `etc/init.toml`, and the autologin session shows up on the fbcon console through the PinePhone display (the Allwinner KMS path). Expected bring-up debugging points: kmod for `.ko.zst`, module load order (backlight, buttons, keyboard over the USB-C dock) and whether `/dev/mmcblk0p2` matches the SD card (check the mmc0 alias in the DTS).
+The u-boot variant inside the image determines the memory timings; the variant-to-board-revision mapping is confirmed at bring-up (in the pmOS u-boot-pinephone package the 624 variant is used for the newer revisions). On the boot console (ttyS0, 115200 8N1, the UART connector on the bottom edge) the kernel and liinit output is visible; on the PinePhone display the tiocompd compositor frame appears on top of the Allwinner KMS, and shell sessions for user mel0k1 open on tty1 and tty2.
 
-## What comes next
+Quick reboot into u-boot without the SD card: u-boot on the board can hold `fastboot 0`, so at bring-up the eMMC can be flashed through `fastboot flash` (the gadget is on USB-C; `fastboot devices` on the host should show the PinePhone). SD boot does not require fastboot.
 
-Stage 4 builds on this bundle: enabling binderfs in the fragment, a compositor on top of the Allwinner KMS display, libgbinder for the modem (eg25-manager in pmOS takes exactly that path). Stage 5 packs the bundle into a full image flashed through pmbootstrap.
+Expected bring-up debug points: the backlight module (pwm-backlight is in the pmOS DTB), buttons and keyboard through the USB-C dock (evdev), matching `root=UUID` to the actual partition (the UUID is fixed in build-rootfs.sh and extlinux.conf), and the binderfs mount behavior (expected to be skipped with a log line until the pmOS kernel is rebuilt).
+
+## What is next
+
+Stage 5 is assembled: a rootfs with users and a manifest, flashable images with verification, and the rootfs boot in QEMU. What remains of the stage: flashing to hardware and tuning the `[[modules]]` list to the real PinePhone device order at bring-up.
